@@ -1,16 +1,28 @@
 ﻿using System;
+using Tmds.Fuse;
 
 namespace RottweilerVault.CLI;
 
 internal static class Program
 {
+    private static IFuseMount? _mountConnection;
+    private static string _mountedVolumeName = string.Empty;
+
     private static void Main(string[] args)
     {
         //TODO: in the future, this should wait for crypto completions so as to not corrupt the sector/entire volume
 
-        // AppDomain.CurrentDomain.ProcessExit += (_, _) =>
-        // {
-        // };
+        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+        {
+            if (_mountConnection == null)
+            {
+                return;
+            }
+
+            Console.WriteLine($"Unmounting volume \"{_mountedVolumeName}\"");
+            _mountConnection.LazyUnmount();
+            _mountConnection.Dispose();
+        };
 
         try
         {
@@ -23,7 +35,12 @@ internal static class Program
             switch (args[0])
             {
                 case "mount":
-                    MountCommand.Run(args);
+                    MountCommand.Run(args,
+                        (mountConn, volumeName) =>
+                        {
+                            _mountConnection = mountConn;
+                            _mountedVolumeName = volumeName;
+                        });
                     break;
                 case "create":
                     CreateCommand.Run(args);
@@ -49,7 +66,7 @@ internal static class Program
         Console.WriteLine(
             "There should be one (and only one) command. Each command has specific options,\n" +
             " some of which might be mandatory, some may not. All commands also have a\n" +
-            "\"--help\" option for showing the help scren for that command.\n");
+            "\"--help\" option for showing the help screen for that command.\n");
 
         Console.WriteLine("Commands:");
         Console.WriteLine("  -h, --help:         Display this help screen.");

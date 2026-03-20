@@ -1,11 +1,14 @@
 using System;
+using System.IO;
 using RottweilerVault.DummyFs;
+using RottweilerVault.FsBase;
+using Tmds.Fuse;
 
 namespace RottweilerVault.CLI;
 
 public static class MountCommand
 {
-    public static void Run(string[] args)
+    public static void Run(string[] args, Action<IFuseMount, string> onMount)
     {
         if (args.Length < 1)
         {
@@ -44,12 +47,42 @@ public static class MountCommand
         }
         else
         {
-            mountPoint = volumeName + "_data";
+            mountPoint = Path.Combine(VolumeManagementUtils.GetAppDataDirectoryPath(), volumeName + "_data");
         }
 
         //TODO: probe all FS-es if no hint
-        DummyVolumeHandler dummyVolume = new(volumeName, mountPoint);
-        dummyVolume.Probe();
+        DummyVolumeHandler dummyVolume = new(volumeName, [], []);
+        bool hasFoundSupportedFs = dummyVolume.Probe();
+
+        if (!hasFoundSupportedFs)
+        {
+            Console.WriteLine("ERROR: The volume could not be opened with any file system. It might be corrupt.");
+            Environment.Exit(1);
+        }
+
+        Fuse.LazyUnmount(mountPoint);
+        Directory.CreateDirectory(mountPoint);
+
+        try
+        {
+            IFuseFileSystem fsImplementation = dummyVolume.GetFsImplementation();
+            MountOptions options = new()
+            {
+                SingleThread = fsImplementation.SupportsMultiThreading
+            };
+
+            using IFuseMount mountConnection = Fuse.Mount(mountPoint, fsImplementation, options);
+            onMount(mountConnection, volumeName);
+
+            Console.WriteLine($"Mounted volume \"{volumeName}\" at path \"{mountPoint}\"");
+            mountConnection.WaitForUnmountAsync().Wait();
+            Console.WriteLine($"Unmounting volume \"{volumeName}\"");
+        }
+        catch (FuseException ex)
+        {
+            Console.WriteLine(
+                $"ERROR: FUSE threw an exception (you might need to force the unmounting manually): {ex.Message}");
+        }
     }
 
     private static void PrintHelp()
@@ -64,6 +97,7 @@ public static class MountCommand
         Console.WriteLine("  mount_point:        Optional. Specifies the mount path. By default, it is\n" +
                           "                      the path of the volume file with the \"_data\" suffix.\n" +
                           "                      The full path will be output anyways.");
+        Console.WriteLine();
 
         Console.WriteLine("Options:");
         Console.WriteLine("  -h, --help:         Display this help screen.");
@@ -71,7 +105,7 @@ public static class MountCommand
                           "                      Directly specifies the password, so it will no longer be\n" +
                           "                      requested with stdin.");
         Console.WriteLine("  --fs-hint <fs>:     Specifies a hint for the used file system so the\n" +
-                          "                      initialization is faster. For now, only \"ext2\" and\n" +
+                          "                      initialization is faster. For now, only \"fat32\" and\n" +
                           "                      \"dummy\" are supported.");
     }
 }

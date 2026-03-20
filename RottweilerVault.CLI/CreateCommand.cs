@@ -15,7 +15,7 @@ public static partial class CreateCommand
             throw new ArgumentException("Assertion failed: No arguments provided for create (not even itself)");
         }
 
-        if (args.Length < 4)
+        if (args.Length < 3)
         {
             Console.WriteLine("ERROR: Too few arguments provided");
             PrintHelp();
@@ -48,10 +48,10 @@ public static partial class CreateCommand
 
         switch (fileSystemType)
         {
-            case "ext2":
+            case "fat32":
                 throw new NotImplementedException("Not yet implemented");
             case "dummy":
-                DummyVolumeHandler dummyVolume = new(volumeName, volumeName + "_data");
+                DummyVolumeHandler dummyVolume = new(volumeName, [], []);
                 dummyVolume.Create();
                 break;
             default:
@@ -63,14 +63,19 @@ public static partial class CreateCommand
 
     private static void PrintHelp()
     {
-        Console.WriteLine("Usage: rottweiler-vault create <volume_name> <password> <file_system>\n");
+        Console.WriteLine("Usage: rottweiler-vault create <volume_name> <file_system> [options]\n");
         Console.WriteLine("Creates a new volume file.");
 
         Console.WriteLine("Parameters:");
         Console.WriteLine("  volume_name:        Mandatory. Specifies the encrypted volume name.");
-        Console.WriteLine("  password:           Mandatory. Specifies password to encrypt the volume with.");
         Console.WriteLine("  file_system:        Mandatory. Specifies the file system type. Accepted values\n" +
-                          "                      are: \"ext2\" and \"dummy\".");
+                          "                      are: \"fat32\" and \"dummy\".");
+        Console.WriteLine();
+
+        Console.WriteLine("Options:");
+        Console.WriteLine("  -p, --password <password>:\n" +
+                          "                      Directly specifies the password, so it will no longer be\n" +
+                          "                      requested with stdin.");
     }
 
     private static void CheckVolumeName(string volumeName)

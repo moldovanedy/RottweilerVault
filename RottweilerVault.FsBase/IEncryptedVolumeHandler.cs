@@ -1,4 +1,6 @@
-﻿namespace RottweilerVault.FsBase;
+﻿using Tmds.Fuse;
+
+namespace RottweilerVault.FsBase;
 
 public interface IEncryptedVolumeHandler
 {
@@ -6,7 +8,10 @@ public interface IEncryptedVolumeHandler
     public bool Probe();
 
     /// <summary>
-    /// Creates a new volume with the specified name, but does not mount it.
+    /// Creates a new volume with the specified name but does not mount it.
     /// </summary>
     public void Create();
+
+    /// <returns>The FS implementation</returns>
+    public IFuseFileSystem GetFsImplementation();
 }

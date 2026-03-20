@@ -10,4 +10,7 @@
         <ProjectReference Include="..\RottweilerVault.FsBase\RottweilerVault.FsBase.csproj" />
     </ItemGroup>
 
+    <ItemGroup>
+        <PackageReference Include="Tmds.Fuse" />
+    </ItemGroup>
 </Project>

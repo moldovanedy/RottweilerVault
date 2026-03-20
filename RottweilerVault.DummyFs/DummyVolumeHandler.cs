@@ -1,13 +1,15 @@
 ﻿using System.IO;
 using System.Linq;
 using RottweilerVault.FsBase;
+using Tmds.Fuse;
 
 namespace RottweilerVault.DummyFs;
 
 public class DummyVolumeHandler : IEncryptedVolumeHandler
 {
     private readonly string _volumeName;
-    private readonly string _mountPath;
+    private readonly byte[] _key1;
+    private readonly byte[] _key2;
 
     private static readonly byte[] FileSignature =
     [
@@ -17,10 +19,11 @@ public class DummyVolumeHandler : IEncryptedVolumeHandler
         (byte)'F', (byte)'S'
     ];
 
-    public DummyVolumeHandler(string volumeName, string mountPath)
+    public DummyVolumeHandler(string volumeName, byte[] key1, byte[] key2)
     {
         _volumeName = volumeName;
-        _mountPath = mountPath;
+        _key1 = key1;
+        _key2 = key2;
     }
 
     public bool Probe()
@@ -28,12 +31,13 @@ public class DummyVolumeHandler : IEncryptedVolumeHandler
         try
         {
             string appDataDir = VolumeManagementUtils.GetAppDataDirectoryPath();
-            if (!File.Exists(appDataDir + _volumeName))
+            string volumePath = Path.Combine(appDataDir, _volumeName);
+            if (!File.Exists(volumePath))
             {
                 return false;
             }
 
-            using FileStream fs = File.OpenRead(appDataDir + _volumeName);
+            using FileStream fs = File.OpenRead(volumePath);
 
             byte[] fileSigCheck = new byte[FileSignature.Length];
             int read = fs.Read(fileSigCheck);
@@ -58,5 +62,10 @@ public class DummyVolumeHandler : IEncryptedVolumeHandler
 
         fs.Write(FileSignature);
         fs.Write(new byte[4096 - FileSignature.Length]);
+    }
+
+    public IFuseFileSystem GetFsImplementation()
+    {
+        return new DummyFileSystem(_volumeName);
     }
 }
