@@ -1,28 +1,16 @@
 ﻿using System;
-using Tmds.Fuse;
+using System.Threading;
 
 namespace RottweilerVault.CLI;
 
 internal static class Program
 {
-    private static IFuseMount? _mountConnection;
-    private static string _mountedVolumeName = string.Empty;
+    private static readonly CancellationTokenSource CancelTokenSource = new();
 
     private static void Main(string[] args)
     {
-        //TODO: in the future, this should wait for crypto completions so as to not corrupt the sector/entire volume
-
-        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
-        {
-            if (_mountConnection == null)
-            {
-                return;
-            }
-
-            Console.WriteLine($"Unmounting volume \"{_mountedVolumeName}\"");
-            _mountConnection.LazyUnmount();
-            _mountConnection.Dispose();
-        };
+        // AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
+        Console.CancelKeyPress += OnProcessExit;
 
         try
         {
@@ -35,12 +23,7 @@ internal static class Program
             switch (args[0])
             {
                 case "mount":
-                    MountCommand.Run(args,
-                        (mountConn, volumeName) =>
-                        {
-                            _mountConnection = mountConn;
-                            _mountedVolumeName = volumeName;
-                        });
+                    MountCommand.Run(args, CancelTokenSource.Token);
                     break;
                 case "create":
                     CreateCommand.Run(args);
@@ -55,6 +38,13 @@ internal static class Program
             Console.WriteLine($"Unhandled exception: {ex}");
             Environment.Exit(1);
         }
+    }
+
+    //TODO: in the future, this should wait for crypto completions so as to not corrupt the sector/entire volume
+    private static void OnProcessExit(object? o, ConsoleCancelEventArgs e)
+    {
+        CancelTokenSource.Cancel();
+        // e.Cancel = true;
     }
 
     private static void PrintHelp()

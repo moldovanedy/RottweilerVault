@@ -8,8 +8,6 @@ namespace RottweilerVault.DummyFs;
 public class DummyVolumeHandler : IEncryptedVolumeHandler
 {
     private readonly string _volumeName;
-    private readonly byte[] _key1;
-    private readonly byte[] _key2;
 
     private static readonly byte[] FileSignature =
     [
@@ -19,11 +17,9 @@ public class DummyVolumeHandler : IEncryptedVolumeHandler
         (byte)'F', (byte)'S'
     ];
 
-    public DummyVolumeHandler(string volumeName, byte[] key1, byte[] key2)
+    public DummyVolumeHandler(string volumeName)
     {
         _volumeName = volumeName;
-        _key1 = key1;
-        _key2 = key2;
     }
 
     public bool Probe()
