@@ -1,6 +1,9 @@
-using RottweilerVault.FsBase;
+using System;
+using System.IO;
+using RottweilerVault.FsBase.FsStructures;
+using RottweilerVault.FsBase.Utils;
 
-namespace RottweilerVault.Ext2.Structures;
+namespace RottweilerVault.Ext2.Ext2Structures;
 
 public class Inode
 {
@@ -8,7 +11,11 @@ public class Inode
 
     private const int STRUCTURE_SIZE = 128;
 
+    /// <summary>
+    /// Use <see cref="InodeType"/> and <see cref="UnixFileMode"/> for this.
+    /// </summary>
     public ushort Mode { get; set; }
+
     public ushort Uid { get; set; }
 
     /// <summary>

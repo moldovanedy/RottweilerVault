@@ -13,4 +13,8 @@
     <ItemGroup>
         <PackageReference Include="Tmds.Fuse" />
     </ItemGroup>
+
+    <ItemGroup>
+      <None Include="DummyFileSystem.cs" />
+    </ItemGroup>
 </Project>

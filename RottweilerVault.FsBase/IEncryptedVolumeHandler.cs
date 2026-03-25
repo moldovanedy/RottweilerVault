@@ -1,4 +1,5 @@
-﻿using Tmds.Fuse;
+﻿using System.Threading;
+using Tmds.Fuse;
 
 namespace RottweilerVault.FsBase;
 
@@ -13,5 +14,5 @@ public interface IEncryptedVolumeHandler
     public void Create();
 
     /// <returns>The FS implementation</returns>
-    public IFuseFileSystem GetFsImplementation();
+    public IFuseFileSystem GetFsImplementation(CancellationToken cancellationToken);
 }

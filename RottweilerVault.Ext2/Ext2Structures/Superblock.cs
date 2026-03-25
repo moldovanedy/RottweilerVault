@@ -1,13 +1,14 @@
-using RottweilerVault.FsBase;
+using System;
+using RottweilerVault.FsBase.Utils;
 
-namespace RottweilerVault.Ext2.Structures;
+namespace RottweilerVault.Ext2.Ext2Structures;
 
 public class Superblock
 {
     private const int STRUCTURE_SIZE = 84;
 
-    private static uint NumInodes => 0x400_000;
-    private static uint NumBlocks => 0x1_000_000;
+    public static uint NumInodes => 0x400_000;
+    public static uint NumBlocks => 0x1_000_000;
     private static uint Unused3 => 0;
     public uint NumUnallocatedBlocks { get; set; }
     public uint NumUnallocatedInodes { get; set; }

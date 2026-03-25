@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace RottweilerVault.FsBase;
+namespace RottweilerVault.FsBase.Utils;
 
 public static class BinaryUtils
 {

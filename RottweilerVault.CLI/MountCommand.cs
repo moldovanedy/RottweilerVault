@@ -5,6 +5,7 @@ using System.Threading;
 using RottweilerVault.DummyFs;
 using RottweilerVault.Ext2;
 using RottweilerVault.FsBase;
+using RottweilerVault.FsBase.Utils;
 using Tmds.Fuse;
 
 namespace RottweilerVault.CLI;
@@ -86,7 +87,7 @@ public static class MountCommand
 
         try
         {
-            IFuseFileSystem fsImplementation = volumeHandler.GetFsImplementation();
+            IFuseFileSystem fsImplementation = volumeHandler.GetFsImplementation(cancellationToken);
             MountOptions options = new()
             {
                 SingleThread = fsImplementation.SupportsMultiThreading

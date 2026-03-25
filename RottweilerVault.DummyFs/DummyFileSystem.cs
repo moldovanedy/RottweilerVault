@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 using System.Text;
-using RottweilerVault.FsBase;
+using RottweilerVault.FsBase.Utils;
 using Tmds.Fuse;
 using Tmds.Linux;
 

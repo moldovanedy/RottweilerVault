@@ -4,7 +4,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using RottweilerVault.DummyFs;
 using RottweilerVault.Ext2;
-using RottweilerVault.FsBase;
+using RottweilerVault.FsBase.Utils;
 
 namespace RottweilerVault.CLI;
 
@@ -89,20 +89,33 @@ public static partial class CreateCommand
         }
 
         (byte[] key1, byte[] key2) = KeyDerivationUtils.DeriveFromPlainPassword(password);
-        switch (fileSystemType)
+
+        try
         {
-            case "ext2":
-                Ext2VolumeHandler ext2VolumeHandler = new(volumeName, key1, key2);
-                ext2VolumeHandler.Create();
-                break;
-            case "dummy":
-                DummyVolumeHandler dummyVolumeHandler = new(volumeName);
-                dummyVolumeHandler.Create();
-                break;
-            default:
-                Console.WriteLine($"ERROR: Unknown file system type specified (\"{fileSystemType}\")");
-                Environment.Exit(1);
-                break;
+            switch (fileSystemType)
+            {
+                case "ext2":
+                    Ext2VolumeHandler ext2VolumeHandler = new(volumeName, key1, key2);
+                    ext2VolumeHandler.Create();
+                    break;
+                case "dummy":
+                    DummyVolumeHandler dummyVolumeHandler = new(volumeName);
+                    dummyVolumeHandler.Create();
+                    break;
+                default:
+                    Console.WriteLine($"ERROR: Unknown file system type specified (\"{fileSystemType}\")");
+                    Environment.Exit(1);
+                    break;
+            }
+        }
+        catch
+        {
+            string appDataDir = VolumeManagementUtils.GetAppDataDirectoryPath();
+            string volumePath = Path.Combine(appDataDir, volumeName);
+
+            File.Delete(volumePath);
+
+            Console.WriteLine("ERROR: Failed to create volume");
         }
     }
 

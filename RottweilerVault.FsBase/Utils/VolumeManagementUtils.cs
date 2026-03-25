@@ -1,7 +1,7 @@
 using System;
 using System.IO;
 
-namespace RottweilerVault.FsBase;
+namespace RottweilerVault.FsBase.Utils;
 
 public static class VolumeManagementUtils
 {

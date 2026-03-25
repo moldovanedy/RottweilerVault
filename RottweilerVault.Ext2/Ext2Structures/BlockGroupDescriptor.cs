@@ -1,6 +1,7 @@
-using RottweilerVault.FsBase;
+using System;
+using RottweilerVault.FsBase.Utils;
 
-namespace RottweilerVault.Ext2.Structures;
+namespace RottweilerVault.Ext2.Ext2Structures;
 
 public class BlockGroupDescriptor
 {

@@ -1,6 +1,8 @@
 ﻿using System.IO;
 using System.Linq;
+using System.Threading;
 using RottweilerVault.FsBase;
+using RottweilerVault.FsBase.Utils;
 using Tmds.Fuse;
 
 namespace RottweilerVault.DummyFs;
@@ -60,7 +62,7 @@ public class DummyVolumeHandler : IEncryptedVolumeHandler
         fs.Write(new byte[4096 - FileSignature.Length]);
     }
 
-    public IFuseFileSystem GetFsImplementation()
+    public IFuseFileSystem GetFsImplementation(CancellationToken cancellationToken)
     {
         return new DummyFileSystem(_volumeName);
     }
