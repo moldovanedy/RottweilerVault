@@ -11,9 +11,12 @@ public interface IFsHandler
     public bool SupportsMultiThreading { get; }
 
     public FsInode? CreateInode(
-        FsDirectory parent, InodeType inodeType, UnixFileMode fileMode, ref FuseFileInfo fileInfo, out FuseError error);
-
-    public FuseError CreateDir(FsInode parent, UnixFileMode dirMode);
+        FsDirectory parent,
+        string name,
+        InodeType inodeType,
+        UnixFileMode fileMode,
+        ref FuseFileInfo fileInfo,
+        out FuseError error);
 
     public FuseError RemoveFile(FsFile fileToDelete);
 

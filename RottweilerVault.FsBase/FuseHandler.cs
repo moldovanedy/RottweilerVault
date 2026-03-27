@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.IO;
 using System.Text;
 using RottweilerVault.FsBase.FsStructures;
@@ -62,7 +63,7 @@ public class FuseHandler : FuseFileSystemBase
             //this causes a StackOverflow, so use the default mode:
             // (UnixFileMode)(ushort)mode
             existingInode = _fsHandler.CreateInode(
-                parentDir, InodeType.Regular, REGULAR_FILE_DEFAULT_MODE, ref fi, out error);
+                parentDir, fileName, InodeType.Regular, REGULAR_FILE_DEFAULT_MODE, ref fi, out error);
             if (error != FuseError.Success)
             {
                 return (int)error;
@@ -73,18 +74,13 @@ public class FuseHandler : FuseFileSystemBase
                 return (int)FuseError.IoError;
             }
 
+            file.Name = fileName;
             parentDir[fileName] = file;
             return 0;
         }
-#if DEBUG
         catch (Exception ex)
         {
-            Console.WriteLine("Exception at Create: " + ex);
-#else
-        catch
-        {
-#endif
-
+            Trace.WriteLine(ex);
             return (int)FuseError.IoError;
         }
     }
@@ -116,15 +112,9 @@ public class FuseHandler : FuseFileSystemBase
 
             return (int)FuseError.NoEntry;
         }
-#if DEBUG
         catch (Exception ex)
         {
-            Console.WriteLine("Exception at GetAttr: " + ex);
-#else
-        catch
-        {
-#endif
-
+            Trace.WriteLine(ex);
             return (int)FuseError.IoError;
         }
     }
@@ -157,15 +147,9 @@ public class FuseHandler : FuseFileSystemBase
 
             return (int)_fsHandler.OpenFile(file, ref fi);
         }
-#if DEBUG
         catch (Exception ex)
         {
-            Console.WriteLine("Exception at Open: " + ex);
-#else
-        catch
-        {
-#endif
-
+            Trace.WriteLine(ex);
             return (int)FuseError.IoError;
         }
     }
@@ -204,15 +188,9 @@ public class FuseHandler : FuseFileSystemBase
 
             return bytesRead;
         }
-#if DEBUG
         catch (Exception ex)
         {
-            Console.WriteLine("Exception at Read: " + ex);
-#else
-        catch
-        {
-#endif
-
+            Trace.WriteLine(ex);
             return (int)FuseError.IoError;
         }
     }
@@ -269,15 +247,9 @@ public class FuseHandler : FuseFileSystemBase
 
             return (int)FuseError.Success;
         }
-#if DEBUG
         catch (Exception ex)
         {
-            Console.WriteLine("Exception at ReadDir: " + ex);
-#else
-        catch
-        {
-#endif
-
+            Trace.WriteLine(ex);
             return (int)FuseError.IoError;
         }
     }
@@ -299,20 +271,26 @@ public class FuseHandler : FuseFileSystemBase
                 throw new Exception("Unexpected condition: Rename ascendent paths are not the same");
             }
 
+            FuseError error = TraverseFs(path, false, out FsInode? inode);
+            if (error != FuseError.Success)
+            {
+                return (int)error;
+            }
+
+            if (inode == null)
+            {
+                return (int)FuseError.IoError;
+            }
+
+            inode.Name = Encoding.UTF8.GetString(path[(lastPathSeparatorFirstPath + 1)..]);
             return (int)_fsHandler.RenameFile(
                 Encoding.UTF8.GetString(path[(lastPathSeparatorFirstPath + 1)..]),
                 Encoding.UTF8.GetString(newPath[(lastPathSeparatorSecondPath + 1)..]),
                 flags);
         }
-#if DEBUG
         catch (Exception ex)
         {
-            Console.WriteLine("Exception at Rename: " + ex);
-#else
-        catch
-        {
-#endif
-
+            Trace.WriteLine(ex);
             return (int)FuseError.IoError;
         }
     }
@@ -351,15 +329,9 @@ public class FuseHandler : FuseFileSystemBase
 
             return bytesWritten;
         }
-#if DEBUG
         catch (Exception ex)
         {
-            Console.WriteLine("Exception at Write: " + ex);
-#else
-        catch
-        {
-#endif
-
+            Trace.WriteLine(ex);
             return (int)FuseError.IoError;
         }
     }
@@ -402,7 +374,7 @@ public class FuseHandler : FuseFileSystemBase
 
                     FuseFileInfo dirInfo = new();
                     FsInode? newInode = _fsHandler.CreateInode(
-                        currentDir, InodeType.Directory, DIRECTORY_DEFAULT_MODE, ref dirInfo, out error);
+                        currentDir, inodeNameStr, InodeType.Directory, DIRECTORY_DEFAULT_MODE, ref dirInfo, out error);
                     if (error != FuseError.Success)
                     {
                         return error;

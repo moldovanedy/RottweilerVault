@@ -8,8 +8,9 @@ namespace RottweilerVault.Ext2.Ext2Structures;
 public class Inode
 {
     public const int NUM_INODES_IN_TABLE = 4096 * 2;
+    public const int NUM_INODES_IN_BLOCK = 4096 / STRUCTURE_SIZE;
 
-    private const int STRUCTURE_SIZE = 128;
+    public const int STRUCTURE_SIZE = 128;
 
     /// <summary>
     /// Use <see cref="InodeType"/> and <see cref="UnixFileMode"/> for this.

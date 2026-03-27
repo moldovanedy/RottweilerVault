@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using RottweilerVault.Ext2.Implementations;
 using RottweilerVault.FsBase;
 using RottweilerVault.FsBase.FsStructures;
 using Tmds.Fuse;
@@ -7,17 +8,24 @@ using Tmds.Linux;
 
 namespace RottweilerVault.Ext2;
 
-public class Ext2FsHandler : IFsHandler
+internal class Ext2FsHandler : IFsHandler
 {
     public bool SupportsMultiThreading => false;
 
-    public FsInode? CreateInode(
-        FsDirectory parent, InodeType inodeType, UnixFileMode fileMode, ref FuseFileInfo fileInfo, out FuseError error)
+    private SuperStructure _superStructure;
+
+    public Ext2FsHandler(SuperStructure superStructure)
     {
-        throw new NotImplementedException();
+        _superStructure = superStructure;
     }
 
-    public FuseError CreateDir(FsInode parent, UnixFileMode dirMode)
+    public FsInode? CreateInode(
+        FsDirectory parent,
+        string name,
+        InodeType inodeType,
+        UnixFileMode fileMode,
+        ref FuseFileInfo fileInfo,
+        out FuseError error)
     {
         throw new NotImplementedException();
     }
@@ -53,7 +61,11 @@ public class Ext2FsHandler : IFsHandler
     }
 
     public int Write(
-        FsFile fileToWriteInto, ulong offset, ReadOnlySpan<byte> buffer, ref FuseFileInfo fileInfo, out FuseError error)
+        FsFile fileToWriteInto,
+        ulong offset,
+        ReadOnlySpan<byte> buffer,
+        ref FuseFileInfo fileInfo,
+        out FuseError error)
     {
         throw new NotImplementedException();
     }

@@ -2,6 +2,7 @@
 using System.IO;
 using System.Threading;
 using RottweilerVault.Ext2.Ext2Structures;
+using RottweilerVault.Ext2.Implementations;
 using RottweilerVault.FsBase;
 using RottweilerVault.FsBase.Utils;
 using RottweilerVault.FsBase.FsStructures;
@@ -44,7 +45,7 @@ public class Ext2VolumeHandler : IEncryptedVolumeHandler
                 return false;
             }
 
-            int readPos = 1024;
+            int readPos = Superblock.BLOCK_OFFSET_BYTES;
             _ = new Superblock(superblockBytes, ref readPos);
 
             //the constructor throws if the ext2 signature is invalid
@@ -70,19 +71,12 @@ public class Ext2VolumeHandler : IEncryptedVolumeHandler
         //1 for the superblock, 4 for the block group descriptor, 1 for the block bitmap, 1 for the inode bitmap,
         // 256 for the inode descriptors, 1 for the root directory entries start
         byte[] dataToWrite = new byte[
-            AesXtsWriter.BLOCK_SIZE
-            + 4 * AesXtsWriter.BLOCK_SIZE
-            + AesXtsWriter.BLOCK_SIZE
-            + AesXtsWriter.BLOCK_SIZE
-            + 256 * AesXtsWriter.BLOCK_SIZE
-            + AesXtsWriter.BLOCK_SIZE];
+            SuperStructure.NUM_NON_DATA_BLOCKS_PER_GROUP * AesXtsWriter.BLOCK_SIZE + AesXtsWriter.BLOCK_SIZE];
 
         WriteInitialDataToBuffer(dataToWrite);
 
         AesXtsWriter cryptoWriter = new(_key1, _key2);
-        int numLbaUsed = dataToWrite.Length / AesXtsWriter.BLOCK_SIZE;
-
-        for (int i = 0; i < numLbaUsed; i++)
+        for (int i = 0; i < SuperStructure.NUM_NON_DATA_BLOCKS_PER_GROUP + 1; i++)
         {
             cryptoWriter.EncryptLba(fs, i,
                 dataToWrite[(i * AesXtsWriter.BLOCK_SIZE)..((i + 1) * AesXtsWriter.BLOCK_SIZE)]);
@@ -99,14 +93,14 @@ public class Ext2VolumeHandler : IEncryptedVolumeHandler
 
     private static void WriteInitialDataToBuffer(byte[] dataToWrite)
     {
-        uint numBlocksUsed = (uint)dataToWrite.Length / AesXtsWriter.BLOCK_SIZE;
+        const uint NUM_BLOCKS_USED = SuperStructure.NUM_NON_DATA_BLOCKS_PER_GROUP + 1;
         Superblock superblock = new()
         {
-            NumUnallocatedInodes = Superblock.NumInodes - 11,
-            NumUnallocatedBlocks = Superblock.NumBlocks - numBlocksUsed
+            NumUnallocatedInodes = Superblock.NumInodes - Superblock.NUM_RESERVED_INODES,
+            NumUnallocatedBlocks = Superblock.NumBlocks - NUM_BLOCKS_USED
         };
 
-        int startIdx = 1024;
+        int startIdx = Superblock.BLOCK_OFFSET_BYTES;
         superblock.WriteToBuffer(dataToWrite, ref startIdx);
 
         //block group descriptor table
@@ -116,8 +110,8 @@ public class Ext2VolumeHandler : IEncryptedVolumeHandler
             BlockBitmapBlockId = 5,
             InodeBitmapBlockId = 6,
             InodeTableStartBlockId = 7,
-            NumFreeInodes = (ushort)(Superblock.NumInodesPerGroup - 11),
-            NumFreeBlocks = (ushort)(Superblock.NumBlocksPerGroup - numBlocksUsed)
+            NumFreeInodes = (ushort)(Superblock.NumInodesPerGroup - Superblock.NUM_RESERVED_INODES),
+            NumFreeBlocks = (ushort)(Superblock.NumBlocksPerGroup - NUM_BLOCKS_USED)
         };
         firstBlockGroupDescriptor.WriteToBuffer(dataToWrite, ref startIdx);
 
@@ -127,9 +121,26 @@ public class Ext2VolumeHandler : IEncryptedVolumeHandler
             unusedBlockGroupDescriptor.WriteToBuffer(dataToWrite, ref startIdx);
         }
 
-        //block and inode bitmaps
-        byte[] bitmapsBytes = new byte[AesXtsWriter.BLOCK_SIZE * 2];
-        bitmapsBytes.CopyTo(dataToWrite, startIdx);
+        //block bitmap
+        byte[] blockBitmap = new byte[AesXtsWriter.BLOCK_SIZE];
+        const uint FULLY_BITMAPPED = NUM_BLOCKS_USED / 8;
+        for (int i = 0; i < FULLY_BITMAPPED; i++)
+        {
+            blockBitmap[i] = 0xff;
+        }
+
+        //there is no remainder, the required bitmap bytes are fully written to, no partial bitmap byte needed 
+        blockBitmap.CopyTo(dataToWrite, startIdx);
+        startIdx += AesXtsWriter.BLOCK_SIZE;
+
+        //inode bitmap
+        byte[] inodeBitmap = new byte[AesXtsWriter.BLOCK_SIZE];
+        //first 10 reserved
+        inodeBitmap[0] = 0xff;
+        inodeBitmap[1] = 0b11000000;
+
+        inodeBitmap.CopyTo(dataToWrite, startIdx);
+        startIdx += AesXtsWriter.BLOCK_SIZE;
 
         //inode table
         Inode unusedInode = new();
@@ -148,11 +159,11 @@ public class Ext2VolumeHandler : IEncryptedVolumeHandler
                     LastAccessTime = unixTimestamp,
                     LastWriteTime = unixTimestamp,
                     HardLinksCount = 1,
-                    SmallLbaBlocksReserved = 1
+                    SmallLbaBlocksReserved = 8
                 };
 
                 //the directory data will always start from the last block
-                rootDir.DataBlocksIds[0] = numBlocksUsed;
+                rootDir.DataBlocksIds[0] = NUM_BLOCKS_USED;
 
                 rootDir.WriteToBuffer(dataToWrite, ref startIdx);
                 continue;

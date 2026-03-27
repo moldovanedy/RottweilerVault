@@ -5,7 +5,10 @@ namespace RottweilerVault.Ext2.Ext2Structures;
 
 public class Superblock
 {
-    private const int STRUCTURE_SIZE = 84;
+    public const int NUM_RESERVED_INODES = 10;
+    public const int BLOCK_OFFSET_BYTES = 1024;
+
+    public const int STRUCTURE_SIZE = 84;
 
     public static uint NumInodes => 0x400_000;
     public static uint NumBlocks => 0x1_000_000;
@@ -17,7 +20,7 @@ public class Superblock
     public static uint FragmentSizeMultiplier => 2;
     public static uint NumBlocksPerGroup => 0x8000;
     public static uint NumFragmentsPerGroup => 0x8000;
-    public static uint NumInodesPerGroup => 4096 * 2;
+    public static uint NumInodesPerGroup => Inode.NUM_INODES_IN_TABLE;
     public uint LastMountTimestamp { get; set; }
     public uint LastWriteTimestamp { get; set; }
     private static ushort Unused4 => 0;

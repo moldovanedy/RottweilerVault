@@ -7,7 +7,7 @@ public class BlockGroupDescriptor
 {
     public const int NUM_DESCRIPTORS_IN_TABLE = 512;
 
-    private const int STRUCTURE_SIZE = 32;
+    public const int STRUCTURE_SIZE = 32;
 
     public uint BlockBitmapBlockId { get; set; }
     public uint InodeBitmapBlockId { get; set; }
