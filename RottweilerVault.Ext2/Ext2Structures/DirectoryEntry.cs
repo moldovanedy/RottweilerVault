@@ -1,5 +1,6 @@
 using System;
 using System.Text;
+using RottweilerVault.FsBase;
 using RottweilerVault.FsBase.Utils;
 
 namespace RottweilerVault.Ext2.Ext2Structures;
@@ -20,10 +21,12 @@ public class DirectoryEntry
 
     public DirectoryEntry(byte[] buffer, ref int readPosition)
     {
-        if (buffer.Length <= readPosition)
+        if (buffer.Length < readPosition + MIN_SIZE)
         {
             throw new ArgumentException("Buffer is too small");
         }
+
+        int initialPos = readPosition;
 
         Inode = BinaryUtils.ConvertBytesToUint(buffer, readPosition);
         readPosition += 4;
@@ -38,6 +41,13 @@ public class DirectoryEntry
         readPosition += 1;
         Name = Encoding.UTF8.GetString(buffer.AsSpan(readPosition, nameLength));
         readPosition += nameLength;
+
+        readPosition += RecordLength - (readPosition - initialPos);
+        //this is a clear clue that this is not a valid entry
+        if (RecordLength == 0)
+        {
+            readPosition = AesXtsWriter.BLOCK_SIZE;
+        }
     }
 
     public void MarkAsLastBlock(ushort remainingSizeForPadding)
@@ -50,7 +60,7 @@ public class DirectoryEntry
 
     public void WriteToBuffer(byte[] buffer, ref int writePosition)
     {
-        if (buffer.Length <= writePosition)
+        if (buffer.Length < writePosition + MIN_SIZE)
         {
             throw new ArgumentException("Buffer is too small");
         }

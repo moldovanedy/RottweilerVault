@@ -82,29 +82,31 @@ internal class SuperStructure : IDisposable
         return !group.TryCreateInode(out Inode? inode, out inodeId) ? null : inode;
     }
 
-    public void AddDataBlockToInode(Inode inode, uint inodeId, uint? inodeDataOffset)
+    public void AddDataBlockToInode(Inode inode, uint inodeId, uint? inodeDataOffset, out uint blockId)
     {
+        // uint? newBlockId = ReserveDataBlock();
+        // if (newBlockId == null)
+        // {
+        //     throw new Exception("Could not add data block to inode");
+        // }
+
         uint? newBlockId = ReserveDataBlock();
         if (newBlockId == null)
-        {
-            throw new Exception("Could not add data block to inode");
-        }
-
-        uint? blockId = ReserveDataBlock();
-        if (blockId == null)
         {
             throw new Exception("Could not reserve data block");
         }
 
         if (inodeDataOffset != null)
         {
-            SetBlockIdToInodeDataOffset(inode, inodeId, blockId.Value, inodeDataOffset.Value);
+            SetBlockIdToInodeDataOffset(inode, inodeId, newBlockId.Value, inodeDataOffset.Value);
         }
         else
         {
-            uint offset = inode.SmallLbaBlocksReserved / 8 + 1;
-            SetBlockIdToInodeDataOffset(inode, inodeId, blockId.Value, offset);
+            uint offset = inode.SmallLbaBlocksReserved / 8;
+            SetBlockIdToInodeDataOffset(inode, inodeId, newBlockId.Value, offset);
         }
+
+        blockId = newBlockId.Value;
     }
 
     public uint? ReserveDataBlock()
@@ -227,6 +229,7 @@ internal class SuperStructure : IDisposable
             case < 11:
             {
                 inode.DataBlocksIds[inodeDataOffset] = blockId;
+                inode.SmallLbaBlocksReserved += 8;
                 GetBlockGroupOfInode(inodeId)?.UpdateInodeOnDisk(inodeId, inode);
                 break;
             }
@@ -239,6 +242,7 @@ internal class SuperStructure : IDisposable
                 }
 
                 inode.DataBlocksIds[12] = singleIndirectBlockId.Value;
+                inode.SmallLbaBlocksReserved += 8;
                 GetBlockGroupOfInode(inodeId)?.UpdateInodeOnDisk(inodeId, inode);
                 //retry
                 // ReSharper disable once TailRecursiveCall
@@ -262,6 +266,7 @@ internal class SuperStructure : IDisposable
                 }
 
                 inode.DataBlocksIds[13] = doubleIndirectBlockId.Value;
+                inode.SmallLbaBlocksReserved += 8;
                 GetBlockGroupOfInode(inodeId)?.UpdateInodeOnDisk(inodeId, inode);
                 //retry
                 // ReSharper disable once TailRecursiveCall
@@ -313,6 +318,7 @@ internal class SuperStructure : IDisposable
                 }
 
                 inode.DataBlocksIds[14] = tripleIndirectBlockId.Value;
+                inode.SmallLbaBlocksReserved += 8;
                 GetBlockGroupOfInode(inodeId)?.UpdateInodeOnDisk(inodeId, inode);
                 //retry
                 // ReSharper disable once TailRecursiveCall

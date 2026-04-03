@@ -53,7 +53,7 @@ public class Inode
 
     public Inode(byte[] buffer, ref int readPosition)
     {
-        if (buffer.Length <= readPosition + STRUCTURE_SIZE)
+        if (buffer.Length < readPosition + STRUCTURE_SIZE)
         {
             throw new ArgumentException("Buffer is too small");
         }
@@ -106,7 +106,7 @@ public class Inode
 
     public void WriteToBuffer(byte[] buffer, ref int writePosition)
     {
-        if (buffer.Length <= writePosition + STRUCTURE_SIZE)
+        if (buffer.Length < writePosition + STRUCTURE_SIZE)
         {
             throw new ArgumentException("Buffer is too small");
         }

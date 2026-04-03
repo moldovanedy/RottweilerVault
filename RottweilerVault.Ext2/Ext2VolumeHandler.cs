@@ -12,6 +12,11 @@ namespace RottweilerVault.Ext2;
 
 public class Ext2VolumeHandler : IEncryptedVolumeHandler
 {
+    public const UnixFileMode DEFAULT_DIRECTORY_MODE =
+        UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+        | UnixFileMode.GroupRead | UnixFileMode.GroupExecute
+        | UnixFileMode.OtherRead | UnixFileMode.OtherExecute;
+
     private readonly string _volumeName;
     private readonly byte[] _key1;
     private readonly byte[] _key2;
@@ -36,11 +41,10 @@ public class Ext2VolumeHandler : IEncryptedVolumeHandler
             }
 
             using FileStream fs = File.OpenRead(volumePath);
+            AesXtsWriter cryptoWriter = new(_key1, _key2);
+            byte[] superblockBytes = cryptoWriter.DecryptLba(fs, 0);
 
-            byte[] superblockBytes = new byte[AesXtsWriter.BLOCK_SIZE];
-            int read = fs.Read(superblockBytes);
-
-            if (read != AesXtsWriter.BLOCK_SIZE)
+            if (superblockBytes.Length != AesXtsWriter.BLOCK_SIZE)
             {
                 return false;
             }
@@ -87,7 +91,24 @@ public class Ext2VolumeHandler : IEncryptedVolumeHandler
 
     public IFuseFileSystem GetFsImplementation(CancellationToken cancellationToken)
     {
-        throw new NotImplementedException();
+        string appDataDir = VolumeManagementUtils.GetAppDataDirectoryPath();
+        string volumePath = Path.Combine(appDataDir, _volumeName);
+
+        if (!File.Exists(volumePath))
+        {
+            throw new FileNotFoundException($"Volume \"{volumePath}\" does not exist");
+        }
+
+        FileStream fs = File.Open(volumePath, FileMode.Open, FileAccess.ReadWrite);
+        fs.Seek(0, SeekOrigin.Begin);
+        SuperStructure superStructure = new(fs, _key1, _key2);
+
+        return new FuseHandler(new Ext2FsHandler(superStructure), new FsDirectory
+        {
+            Name = "/",
+            InodeId = 2,
+            InodeMode = DEFAULT_DIRECTORY_MODE
+        });
     }
 
 
@@ -116,7 +137,7 @@ public class Ext2VolumeHandler : IEncryptedVolumeHandler
         firstBlockGroupDescriptor.WriteToBuffer(dataToWrite, ref startIdx);
 
         BlockGroupDescriptor unusedBlockGroupDescriptor = new();
-        for (int i = 0; i < BlockGroupDescriptor.NUM_DESCRIPTORS_IN_TABLE; i++)
+        for (int i = 0; i < BlockGroupDescriptor.NUM_DESCRIPTORS_IN_TABLE - 1; i++)
         {
             unusedBlockGroupDescriptor.WriteToBuffer(dataToWrite, ref startIdx);
         }
@@ -154,7 +175,7 @@ public class Ext2VolumeHandler : IEncryptedVolumeHandler
                 {
                     Mode =
                         (ushort)InodeType.Directory
-                        | (ushort)(UnixFileMode.UserRead | UnixFileMode.GroupRead | UnixFileMode.OtherRead),
+                        | (ushort)DEFAULT_DIRECTORY_MODE,
                     CreateTime = unixTimestamp,
                     LastAccessTime = unixTimestamp,
                     LastWriteTime = unixTimestamp,
@@ -163,7 +184,7 @@ public class Ext2VolumeHandler : IEncryptedVolumeHandler
                 };
 
                 //the directory data will always start from the last block
-                rootDir.DataBlocksIds[0] = NUM_BLOCKS_USED;
+                rootDir.DataBlocksIds[0] = NUM_BLOCKS_USED - 1;
 
                 rootDir.WriteToBuffer(dataToWrite, ref startIdx);
                 continue;
@@ -173,13 +194,33 @@ public class Ext2VolumeHandler : IEncryptedVolumeHandler
         }
 
         //root directory entries start
-        DirectoryEntry directoryEntry =
+        DirectoryEntry[] directoryEntries =
+        [
+            new()
+            {
+                Inode = 2,
+                FileType = DirEntryFileType.Directory,
+                Name = ".",
+                RecordLength = DirectoryEntry.MIN_SIZE + 1
+            },
+            new()
+            {
+                Inode = 2,
+                FileType = DirEntryFileType.Directory,
+                Name = "..",
+                RecordLength = DirectoryEntry.MIN_SIZE + 2
+            },
             new()
             {
                 Inode = 0,
                 FileType = DirEntryFileType.Unknown,
-                RecordLength = 4096
-            };
-        directoryEntry.WriteToBuffer(dataToWrite, ref startIdx);
+                RecordLength = 4096 - DirectoryEntry.MIN_SIZE * 2 - 3
+            }
+        ];
+
+        foreach (DirectoryEntry entry in directoryEntries)
+        {
+            entry.WriteToBuffer(dataToWrite, ref startIdx);
+        }
     }
 }

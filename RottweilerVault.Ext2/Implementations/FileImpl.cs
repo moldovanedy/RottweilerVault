@@ -44,6 +44,7 @@ internal class FileImpl : InodeImpl
         superStructure.GetBlockGroupOfInode(inodeId.Value)?.UpdateInodeOnDisk(inodeId.Value, inode);
 
         FileImpl file = new(inode, inodeId.Value, name);
+        parentDir.AddDescendant(file);
         return file;
     }
 }

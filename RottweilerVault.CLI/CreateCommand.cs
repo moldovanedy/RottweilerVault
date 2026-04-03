@@ -88,7 +88,14 @@ public static partial class CreateCommand
             }
         }
 
-        (byte[] key1, byte[] key2) = KeyDerivationUtils.DeriveFromPlainPassword(password);
+        byte[] salt = KeyDerivationUtils.GetRandomSalt();
+        using FileStream fs = File.Open(
+            Path.Combine(VolumeManagementUtils.GetAppDataDirectoryPath(), volumeName) + ".key",
+            FileMode.OpenOrCreate,
+            FileAccess.Write);
+        fs.Write(salt);
+
+        (byte[] key1, byte[] key2) = KeyDerivationUtils.DeriveFromPlainPassword(password, salt);
 
         try
         {

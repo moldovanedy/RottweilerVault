@@ -37,7 +37,11 @@ public interface IFsHandler
         ref FuseFileInfo fileInfo,
         out FuseError error);
 
-    public FuseError RenameFile(string oldName, string newName, int flags);
+    public FuseError RenameFile(FsDirectory parentDir, string oldName, string newName, int flags);
+
+    public FuseError Chmod(FsInode inode, UnixFileMode newMode, ref FuseFileInfo fileInfo);
+
+    public FuseError Chown(FsInode inode, uint uid, uint gid, ref FuseFileInfo fileInfo);
 
 
     public FsInode? GetInodeIfExists(FsDirectory parentDir, string name, out FuseError error);

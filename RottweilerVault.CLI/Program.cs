@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Diagnostics;
 using System.Threading;
 
 namespace RottweilerVault.CLI;
@@ -14,6 +15,7 @@ internal static class Program
 
         try
         {
+            Trace.Listeners.Add(new ConsoleTraceListener());
             if (args.Length == 0 || args[0] == "-h" || args[0] == "--help")
             {
                 PrintHelp();

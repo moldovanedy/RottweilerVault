@@ -26,6 +26,11 @@ public class FsDirectory : FsInode
         return _directDescendants.Remove(name);
     }
 
+    public void ClearDescendants()
+    {
+        _directDescendants.Clear();
+    }
+
     public FsInode this[string name]
     {
         get => _directDescendants[name];

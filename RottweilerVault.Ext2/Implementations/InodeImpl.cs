@@ -6,9 +6,9 @@ internal abstract class InodeImpl
 {
     public abstract DirEntryFileType InodeType { get; }
 
-    public Inode Inode { get; protected set; }
-    public uint InodeId { get; protected set; }
-    public string Name { get; protected set; }
+    public Inode Inode { get; set; }
+    public uint InodeId { get; set; }
+    public string Name { get; set; }
 
     protected InodeImpl(Inode inode, uint inodeId, string name)
     {

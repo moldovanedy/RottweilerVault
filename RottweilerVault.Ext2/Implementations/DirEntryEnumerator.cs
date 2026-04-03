@@ -43,7 +43,13 @@ internal class DirEntryEnumerator : IEnumerator<InodeImpl>
         DirectoryEntry ext2Entry = new(_dataBlockRaw, ref offset);
         _offsetInBlock = offset;
 
-        if (offset == AesXtsWriter.BLOCK_SIZE)
+        // if (ext2Entry.Inode == 0)
+        // {
+        //     Current = null!;
+        //     return false;
+        // }
+
+        if (ext2Entry.Inode == 0 || offset == AesXtsWriter.BLOCK_SIZE)
         {
             _dataBlockOffset++;
             _dataBlockRaw = [];
@@ -74,6 +80,7 @@ internal class DirEntryEnumerator : IEnumerator<InodeImpl>
     {
         _dataBlockOffset = 0;
         _offsetInBlock = 0;
+        Current = null!;
     }
 
     public void Dispose()

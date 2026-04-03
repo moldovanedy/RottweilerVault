@@ -1,5 +1,6 @@
 using System;
 using System.IO;
+using System.Security.Cryptography;
 using System.Text;
 using System.Threading;
 using RottweilerVault.DummyFs;
@@ -40,7 +41,7 @@ public static class MountCommand
 
         ParseArguments(args);
 
-        (byte[] key1, byte[] key2) = KeyDerivationUtils.DeriveFromPlainPassword(_password);
+        (byte[] key1, byte[] key2) = KeyDerivationUtils.DeriveFromPlainPassword(_password, GetStoredSalt());
         string[] fileSystems = ["dummy", "ext2"];
 
         if (!string.IsNullOrEmpty(_fsHint))
@@ -97,7 +98,7 @@ public static class MountCommand
 
             Console.WriteLine($"Mounted volume \"{_volumeName}\" at path \"{_mountPoint}\"");
             //we explicitly don't pass the cancellation token because the internal Tmds.Fuse implementation
-            //doesn't play nice with cancellation, Task.Run etc. (the folder is not unmounted properly)
+            //doesn't play nice with cancellation, Task.Run, etc. (the folder is not unmounted properly)
             mountConnection.WaitForUnmountAsync().Wait(CancellationToken.None);
 
             //this shouldn't generally happen, as the previous call never returns (at least from testing)
@@ -223,5 +224,19 @@ public static class MountCommand
                 Environment.Exit(1);
             }
         }
+    }
+
+    private static byte[] GetStoredSalt()
+    {
+        string saltKeyPath = Path.Combine(VolumeManagementUtils.GetAppDataDirectoryPath(), _volumeName) + ".key";
+        if (!File.Exists(saltKeyPath))
+        {
+            throw new CryptographicException("Salt file does not exist. Decryption failed");
+        }
+
+        using FileStream fs = File.Open(saltKeyPath, FileMode.Open, FileAccess.Read);
+        byte[] salt = new byte[16];
+        fs.ReadExactly(salt);
+        return salt;
     }
 }

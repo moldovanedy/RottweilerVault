@@ -101,7 +101,7 @@ internal class DirectoryImpl : InodeImpl, IEnumerable<InodeImpl>
     {
         //for directories, we can always get the last data block for addition, as that always contains the last
         // entries, including the padding entry
-        uint lastFilledDataBlockIndex = Inode.SmallLbaBlocksReserved / 8;
+        uint lastFilledDataBlockIndex = Inode.SmallLbaBlocksReserved / 8 - 1;
         uint blockId = _superStructure.GetBlockIdOfInodeDataOffset(Inode, lastFilledDataBlockIndex);
 
         List<DirectoryEntry> lastEntries = GetEntriesFromDataBlock(blockId);
@@ -112,14 +112,78 @@ internal class DirectoryImpl : InodeImpl, IEnumerable<InodeImpl>
         }
 
         var descEntry = descInode.ToDirectoryEntry();
-        if (paddingEntry.RecordLength < descEntry.RecordLength)
+        if (paddingEntry.RecordLength - DirectoryEntry.MIN_SIZE < descEntry.RecordLength)
         {
             //TODO: add another data block for this directory
+            throw new NotImplementedException();
         }
 
         lastEntries.Insert(lastEntries.Count - 1, descEntry);
         paddingEntry.RecordLength -= descEntry.RecordLength;
         SetEntriesToDataBlock(blockId, lastEntries);
+    }
+
+    public void UpdateDescendant(string descendantName, InodeImpl newData)
+    {
+        uint numBlocksOfEntries = Inode.SmallLbaBlocksReserved / 8;
+        uint lastEntriesBlockId = _superStructure.GetBlockIdOfInodeDataOffset(
+            Inode, numBlocksOfEntries - 1);
+        List<DirectoryEntry> lastEntries = GetEntriesFromDataBlock(lastEntriesBlockId);
+
+        DirectoryEntry paddingEntry = lastEntries[^1];
+        if (paddingEntry.Name.Length > 0)
+        {
+            throw new Exception("Assertion failed: padding entry has a name");
+        }
+
+        bool done = false;
+        for (uint i = 0; i < numBlocksOfEntries; i++)
+        {
+            if (done)
+            {
+                break;
+            }
+
+            uint blockId = _superStructure.GetBlockIdOfInodeDataOffset(Inode, i);
+            //tread the case where this block IS the last block
+            List<DirectoryEntry> thisBlockEntries =
+                blockId == lastEntriesBlockId
+                    ? lastEntries
+                    : GetEntriesFromDataBlock(blockId);
+
+            for (int j = 0; j < thisBlockEntries.Count; j++)
+            {
+                DirectoryEntry entry = thisBlockEntries[j];
+                if (entry.Name == descendantName)
+                {
+                    thisBlockEntries[j] = newData.ToDirectoryEntry();
+                    int sizeDelta = thisBlockEntries[j].RecordLength - entry.RecordLength;
+
+                    if (paddingEntry.RecordLength - sizeDelta < DirectoryEntry.MIN_SIZE)
+                    {
+                        //TODO: add another data block for this directory
+                        throw new NotImplementedException();
+                    }
+
+                    if (sizeDelta >= 0)
+                    {
+                        paddingEntry.RecordLength -= (ushort)sizeDelta;
+                    }
+                    else
+                    {
+                        paddingEntry.RecordLength += (ushort)-sizeDelta;
+                    }
+
+                    //actually write the changes, first the padding entry, then the actual entries where the
+                    //descendant was changed
+                    SetEntriesToDataBlock(blockId, thisBlockEntries);
+                    SetEntriesToDataBlock(lastEntriesBlockId, lastEntries);
+
+                    done = true;
+                    break;
+                }
+            }
+        }
     }
 
 

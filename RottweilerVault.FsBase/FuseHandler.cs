@@ -20,16 +20,88 @@ public class FuseHandler : FuseFileSystemBase
         | UnixFileMode.GroupRead | UnixFileMode.GroupExecute
         | UnixFileMode.OtherRead | UnixFileMode.OtherExecute;
 
-    private const UnixFileMode REGULAR_FILE_DEFAULT_MODE =
-        UnixFileMode.UserRead
-        | UnixFileMode.UserWrite
-        | UnixFileMode.GroupRead
-        | UnixFileMode.OtherRead;
+    // private const UnixFileMode REGULAR_FILE_DEFAULT_MODE =
+    //     UnixFileMode.UserRead
+    //     | UnixFileMode.UserWrite
+    //     | UnixFileMode.GroupRead
+    //     | UnixFileMode.OtherRead;
 
     public FuseHandler(IFsHandler fsHandler, FsDirectory rootDir)
     {
         _fsHandler = fsHandler;
         _rootDir = rootDir;
+    }
+
+    public override int Chown(ReadOnlySpan<byte> path, uint uid, uint gid, FuseFileInfoRef fiRef)
+    {
+        try
+        {
+            if (!path.StartsWith("/"u8))
+            {
+                throw new ArgumentException("Path is not absolute");
+            }
+
+            FuseFileInfo fi = fiRef.IsNull ? new FuseFileInfo() : fiRef.Value;
+            if (path.SequenceEqual("/"u8))
+            {
+                return (int)_fsHandler.Chown(_rootDir, uid, gid, ref fi);
+            }
+
+            FuseError error = TraverseFs(path, false, out FsInode? inode);
+            if (error != FuseError.Success)
+            {
+                return (int)error;
+            }
+
+            if (inode != null)
+            {
+                return (int)_fsHandler.Chown(inode, uid, gid, ref fi);
+            }
+
+            return (int)FuseError.NoEntry;
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine(ex);
+            return (int)FuseError.IoError;
+        }
+    }
+
+    public override int ChMod(ReadOnlySpan<byte> path, mode_t mode, FuseFileInfoRef fiRef)
+    {
+        try
+        {
+            if (!path.StartsWith("/"u8))
+            {
+                throw new ArgumentException("Path is not absolute");
+            }
+
+            FuseFileInfo fi = fiRef.IsNull ? new FuseFileInfo() : fiRef.Value;
+            if (path.SequenceEqual("/"u8))
+            {
+                //we convert to string, then to ushort to avoid a StackOverflow, as the internal
+                //implementation is flawed
+                return (int)_fsHandler.Chmod(_rootDir, (UnixFileMode)ushort.Parse(mode.ToString()), ref fi);
+            }
+
+            FuseError error = TraverseFs(path, false, out FsInode? inode);
+            if (error != FuseError.Success)
+            {
+                return (int)error;
+            }
+
+            if (inode != null)
+            {
+                return (int)_fsHandler.Chmod(inode, (UnixFileMode)ushort.Parse(mode.ToString()), ref fi);
+            }
+
+            return (int)FuseError.NoEntry;
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine(ex);
+            return (int)FuseError.IoError;
+        }
     }
 
     public override int Create(ReadOnlySpan<byte> path, mode_t mode, ref FuseFileInfo fi)
@@ -60,10 +132,8 @@ public class FuseHandler : FuseFileSystemBase
                 return (int)FuseError.AlreadyExists;
             }
 
-            //this causes a StackOverflow, so use the default mode:
-            // (UnixFileMode)(ushort)mode
             existingInode = _fsHandler.CreateInode(
-                parentDir, fileName, InodeType.Regular, REGULAR_FILE_DEFAULT_MODE, ref fi, out error);
+                parentDir, fileName, InodeType.Regular, (UnixFileMode)ushort.Parse(mode.ToString()), ref fi, out error);
             if (error != FuseError.Success)
             {
                 return (int)error;
@@ -139,11 +209,14 @@ public class FuseHandler : FuseFileSystemBase
                 return (int)FuseError.IsADirectory;
             }
 
-            int accessMode = fi.flags & LibC.O_ACCMODE;
-            if (accessMode != LibC.O_RDONLY && accessMode != LibC.O_RDWR)
-            {
-                return (int)FuseError.AccessDenied;
-            }
+            //TODO: actually handle this correctly (check if the user has the rights)
+            //TODO: also handle O_APPEND
+
+            // int accessMode = fi.flags & LibC.O_ACCMODE;
+            // if (accessMode != LibC.O_RDONLY && accessMode != LibC.O_RDWR)
+            // {
+            //     return (int)FuseError.AccessDenied;
+            // }
 
             return (int)_fsHandler.OpenFile(file, ref fi);
         }
@@ -233,6 +306,7 @@ public class FuseHandler : FuseFileSystemBase
                 return (int)FuseError.IoError;
             }
 
+            directory.ClearDescendants();
             while (enumerator.MoveNext())
             {
                 FsInode? currentEntry = enumerator.Current;
@@ -282,11 +356,28 @@ public class FuseHandler : FuseFileSystemBase
                 return (int)FuseError.IoError;
             }
 
-            inode.Name = Encoding.UTF8.GetString(path[(lastPathSeparatorFirstPath + 1)..]);
-            return (int)_fsHandler.RenameFile(
-                Encoding.UTF8.GetString(path[(lastPathSeparatorFirstPath + 1)..]),
-                Encoding.UTF8.GetString(newPath[(lastPathSeparatorSecondPath + 1)..]),
+            string oldName = Encoding.UTF8.GetString(path[(lastPathSeparatorFirstPath + 1)..]);
+            string newName = Encoding.UTF8.GetString(newPath[(lastPathSeparatorSecondPath + 1)..]);
+
+            inode.Name = oldName;
+            error = _fsHandler.RenameFile(
+                inode.Parent ?? throw new Exception("Unexpected condition: Renamed inode has no parent"),
+                oldName,
+                newName,
                 flags);
+            if (error != FuseError.Success)
+            {
+                return (int)error;
+            }
+
+            if (inode.Parent == null)
+            {
+                return (int)FuseError.IoError;
+            }
+
+            inode.Parent[newName] = inode;
+            inode.Parent.Remove(oldName);
+            return (int)FuseError.Success;
         }
         catch (Exception ex)
         {
@@ -339,6 +430,13 @@ public class FuseHandler : FuseFileSystemBase
 
     private FuseError TraverseFs(ReadOnlySpan<byte> path, bool createNonExistentDirs, out FsInode? inode)
     {
+        //special case
+        if (path.SequenceEqual("/"u8) || path.Length == 0)
+        {
+            inode = _rootDir;
+            return FuseError.Success;
+        }
+
         inode = null;
         MemoryExtensions.SpanSplitEnumerator<byte> pathParts = path.Split("/"u8);
         FsDirectory currentDir = _rootDir;

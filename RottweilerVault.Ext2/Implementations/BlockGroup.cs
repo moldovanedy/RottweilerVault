@@ -86,7 +86,7 @@ internal class BlockGroup
                         _inodeBitmap[i] |= (byte)(0b10000000 >> j);
 
                         //this should never happen, but it's better to be prepared 
-                        if (_inodeTableCache.ContainsKey(newId))
+                        if (_inodeTableCache.TryGetValue(newId, out Inode? value) && value.DataBlocksIds[0] != 0)
                         {
                             foundId = false;
                         }
