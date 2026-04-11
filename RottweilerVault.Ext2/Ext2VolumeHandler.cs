@@ -7,6 +7,7 @@ using RottweilerVault.FsBase;
 using RottweilerVault.FsBase.Utils;
 using RottweilerVault.FsBase.FsStructures;
 using Tmds.Fuse;
+using Tmds.Linux;
 
 namespace RottweilerVault.Ext2;
 
@@ -170,6 +171,9 @@ public class Ext2VolumeHandler : IEncryptedVolumeHandler
             //root directory
             if (i == 2)
             {
+                uint uid = LibC.geteuid();
+                uint gid = LibC.getegid();
+
                 uint unixTimestamp = (uint)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                 Inode rootDir = new()
                 {
@@ -180,7 +184,11 @@ public class Ext2VolumeHandler : IEncryptedVolumeHandler
                     LastAccessTime = unixTimestamp,
                     LastWriteTime = unixTimestamp,
                     HardLinksCount = 1,
-                    SmallLbaBlocksReserved = 8
+                    SmallLbaBlocksReserved = 8,
+                    UidLow = (ushort)uid,
+                    UidHigh = (ushort)(uid >> 16),
+                    GidLow = (ushort)gid,
+                    GidHigh = (ushort)(gid >> 16)
                 };
 
                 //the directory data will always start from the last block
@@ -214,7 +222,7 @@ public class Ext2VolumeHandler : IEncryptedVolumeHandler
             {
                 Inode = 0,
                 FileType = DirEntryFileType.Unknown,
-                RecordLength = 4096 - DirectoryEntry.MIN_SIZE * 2 - 3
+                RecordLength = AesXtsWriter.BLOCK_SIZE - DirectoryEntry.MIN_SIZE * 2 - 3
             }
         ];
 

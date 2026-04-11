@@ -17,7 +17,7 @@ public class Inode
     /// </summary>
     public ushort Mode { get; set; }
 
-    public ushort Uid { get; set; }
+    public ushort UidLow { get; set; }
 
     /// <summary>
     /// For once, we use version 1, not 0, as we want 64-bit file sizes.
@@ -28,7 +28,7 @@ public class Inode
     public uint CreateTime { get; set; }
     public uint LastWriteTime { get; set; }
     public uint DeleteTime { get; set; }
-    public ushort Gid { get; set; }
+    public ushort GidLow { get; set; }
     public ushort HardLinksCount { get; set; }
 
     /// <summary>
@@ -44,7 +44,9 @@ public class Inode
     private static uint Reserved2 => 0;
     public uint DataSizeHigh { get; set; }
     private static uint Reserved3 => 0;
-    private static ulong Reserved4 => 0;
+    private static uint Reserved4 => 0;
+    public ushort UidHigh { get; set; }
+    public ushort GidHigh { get; set; }
     private static uint Reserved5 => 0;
 
     public Inode()
@@ -60,7 +62,7 @@ public class Inode
 
         Mode = BinaryUtils.ConvertBytesToUshort(buffer, readPosition);
         readPosition += 2;
-        Uid = BinaryUtils.ConvertBytesToUshort(buffer, readPosition);
+        UidLow = BinaryUtils.ConvertBytesToUshort(buffer, readPosition);
         readPosition += 2;
         DataSizeLow = BinaryUtils.ConvertBytesToUint(buffer, readPosition);
         readPosition += 4;
@@ -72,7 +74,7 @@ public class Inode
         readPosition += 4;
         DeleteTime = BinaryUtils.ConvertBytesToUint(buffer, readPosition);
         readPosition += 4;
-        Gid = BinaryUtils.ConvertBytesToUshort(buffer, readPosition);
+        GidLow = BinaryUtils.ConvertBytesToUshort(buffer, readPosition);
         readPosition += 2;
         HardLinksCount = BinaryUtils.ConvertBytesToUshort(buffer, readPosition);
         readPosition += 2;
@@ -98,8 +100,12 @@ public class Inode
         readPosition += 4;
         _ = BinaryUtils.ConvertBytesToUint(buffer, readPosition);
         readPosition += 4;
-        _ = BinaryUtils.ConvertBytesToLong(buffer, readPosition);
-        readPosition += 8;
+        _ = BinaryUtils.ConvertBytesToInt(buffer, readPosition);
+        readPosition += 4;
+        UidHigh = BinaryUtils.ConvertBytesToUshort(buffer, readPosition);
+        readPosition += 2;
+        GidHigh = BinaryUtils.ConvertBytesToUshort(buffer, readPosition);
+        readPosition += 2;
         _ = BinaryUtils.ConvertBytesToUint(buffer, readPosition);
         readPosition += 4;
     }
@@ -113,7 +119,7 @@ public class Inode
 
         BinaryUtils.ConvertUshortToBytes(Mode, buffer, writePosition);
         writePosition += 2;
-        BinaryUtils.ConvertUshortToBytes(Uid, buffer, writePosition);
+        BinaryUtils.ConvertUshortToBytes(UidLow, buffer, writePosition);
         writePosition += 2;
         BinaryUtils.ConvertUintToBytes(DataSizeLow, buffer, writePosition);
         writePosition += 4;
@@ -125,7 +131,7 @@ public class Inode
         writePosition += 4;
         BinaryUtils.ConvertUintToBytes(DeleteTime, buffer, writePosition);
         writePosition += 4;
-        BinaryUtils.ConvertUshortToBytes(Gid, buffer, writePosition);
+        BinaryUtils.ConvertUshortToBytes(GidLow, buffer, writePosition);
         writePosition += 2;
         BinaryUtils.ConvertUshortToBytes(HardLinksCount, buffer, writePosition);
         writePosition += 2;
@@ -150,8 +156,12 @@ public class Inode
         writePosition += 4;
         BinaryUtils.ConvertUintToBytes(Reserved3, buffer, writePosition);
         writePosition += 4;
-        BinaryUtils.ConvertLongToBytes(unchecked((long)Reserved4), buffer, writePosition);
-        writePosition += 8;
+        BinaryUtils.ConvertUintToBytes(Reserved4, buffer, writePosition);
+        writePosition += 4;
+        BinaryUtils.ConvertUshortToBytes(UidHigh, buffer, writePosition);
+        writePosition += 2;
+        BinaryUtils.ConvertUshortToBytes(GidHigh, buffer, writePosition);
+        writePosition += 2;
         BinaryUtils.ConvertUintToBytes(Reserved5, buffer, writePosition);
         writePosition += 4;
     }

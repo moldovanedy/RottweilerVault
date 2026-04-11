@@ -32,6 +32,37 @@ public class FuseHandler : FuseFileSystemBase
         _rootDir = rootDir;
     }
 
+    public override int Access(ReadOnlySpan<byte> path, mode_t mode)
+    {
+        try
+        {
+            if (!path.StartsWith("/"u8))
+            {
+                throw new ArgumentException("Path is not absolute");
+            }
+
+            FuseError error = TraverseFs(path, false, out FsInode? inode);
+            if (error != FuseError.Success)
+            {
+                return (int)error;
+            }
+
+            if (inode == null)
+            {
+                return (int)FuseError.NoEntry;
+            }
+
+            return _fsHandler.IsAccessAllowed(inode, int.Parse(mode.ToString()))
+                ? (int)FuseError.Success
+                : (int)FuseError.AccessDenied;
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine(ex);
+            return (int)FuseError.IoError;
+        }
+    }
+
     public override int Chown(ReadOnlySpan<byte> path, uint uid, uint gid, FuseFileInfoRef fiRef)
     {
         try
@@ -189,6 +220,92 @@ public class FuseHandler : FuseFileSystemBase
         }
     }
 
+    public override int FAllocate(ReadOnlySpan<byte> path, int mode, ulong offset, long length, ref FuseFileInfo fi)
+    {
+        try
+        {
+            if (!path.StartsWith("/"u8))
+            {
+                throw new ArgumentException("Path is not absolute");
+            }
+
+            FuseError error = TraverseFs(path, false, out FsInode? inode);
+            if (error != FuseError.Success)
+            {
+                return (int)error;
+            }
+
+            if (inode is not FsFile file)
+            {
+                return (int)FuseError.IsADirectory;
+            }
+
+            return (int)_fsHandler.PreAllocate(file, offset, length, ref fi);
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine(ex);
+            return (int)FuseError.IoError;
+        }
+    }
+
+    public override int MkDir(ReadOnlySpan<byte> path, mode_t mode)
+    {
+        try
+        {
+            if (!path.StartsWith("/"u8))
+            {
+                throw new ArgumentException("Path is not absolute");
+            }
+
+            int lastPathSeparator = path.LastIndexOf("/"u8);
+            FuseError error = TraverseFs(path[..lastPathSeparator], true, out FsInode? inode);
+            if (error != FuseError.Success)
+            {
+                return (int)error;
+            }
+
+            if (inode is not FsDirectory parentDir)
+            {
+                return (int)FuseError.NotADirectory;
+            }
+
+            string dirName = Encoding.UTF8.GetString(path[(lastPathSeparator + 1)..]);
+            FsInode? existingInode = parentDir.GetEntryOrNull(dirName);
+            if (existingInode != null)
+            {
+                return (int)FuseError.AlreadyExists;
+            }
+
+            FuseFileInfo fi = new();
+            existingInode = _fsHandler.CreateInode(
+                parentDir,
+                dirName,
+                InodeType.Directory,
+                (UnixFileMode)ushort.Parse(mode.ToString()),
+                ref fi,
+                out error);
+            if (error != FuseError.Success)
+            {
+                return (int)error;
+            }
+
+            if (existingInode is not FsDirectory dir)
+            {
+                return (int)FuseError.IoError;
+            }
+
+            dir.Name = dirName;
+            parentDir[dirName] = dir;
+            return 0;
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine(ex);
+            return (int)FuseError.IoError;
+        }
+    }
+
     public override int Open(ReadOnlySpan<byte> path, ref FuseFileInfo fi)
     {
         try
@@ -209,16 +326,36 @@ public class FuseHandler : FuseFileSystemBase
                 return (int)FuseError.IsADirectory;
             }
 
-            //TODO: actually handle this correctly (check if the user has the rights)
-            //TODO: also handle O_APPEND
-
-            // int accessMode = fi.flags & LibC.O_ACCMODE;
-            // if (accessMode != LibC.O_RDONLY && accessMode != LibC.O_RDWR)
-            // {
-            //     return (int)FuseError.AccessDenied;
-            // }
-
             return (int)_fsHandler.OpenFile(file, ref fi);
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine(ex);
+            return (int)FuseError.IoError;
+        }
+    }
+
+    public override int OpenDir(ReadOnlySpan<byte> path, ref FuseFileInfo fi)
+    {
+        try
+        {
+            if (!path.StartsWith("/"u8))
+            {
+                throw new ArgumentException("Path is not absolute");
+            }
+
+            FuseError error = TraverseFs(path, false, out FsInode? inode);
+            if (error != FuseError.Success)
+            {
+                return (int)error;
+            }
+
+            if (inode is not FsDirectory dir)
+            {
+                return (int)FuseError.NotADirectory;
+            }
+
+            return (int)_fsHandler.OpenDir(dir, ref fi);
         }
         catch (Exception ex)
         {
@@ -378,6 +515,176 @@ public class FuseHandler : FuseFileSystemBase
             inode.Parent[newName] = inode;
             inode.Parent.Remove(oldName);
             return (int)FuseError.Success;
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine(ex);
+            return (int)FuseError.IoError;
+        }
+    }
+
+    public override int ReleaseDir(ReadOnlySpan<byte> path, ref FuseFileInfo fi)
+    {
+        return (int)FuseError.Success;
+    }
+
+    public override int RmDir(ReadOnlySpan<byte> path)
+    {
+        try
+        {
+            if (!path.StartsWith("/"u8))
+            {
+                throw new ArgumentException("Path is not absolute");
+            }
+
+            FuseError error = TraverseFs(path, false, out FsInode? inode);
+            if (error != FuseError.Success)
+            {
+                return (int)error;
+            }
+
+            if (inode is not FsDirectory dir)
+            {
+                return (int)FuseError.NotADirectory;
+            }
+
+            return (int)_fsHandler.RemoveDir(dir);
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine(ex);
+            return (int)FuseError.IoError;
+        }
+    }
+
+    public override int StatFS(ReadOnlySpan<byte> path, ref statvfs statfs)
+    {
+        try
+        {
+            return (int)_fsHandler.GetFsStats(ref statfs);
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine(ex);
+            return (int)FuseError.IoError;
+        }
+    }
+
+    public override int Truncate(ReadOnlySpan<byte> path, ulong length, FuseFileInfoRef fiRef)
+    {
+        try
+        {
+            if (!path.StartsWith("/"u8))
+            {
+                throw new ArgumentException("Path is not absolute");
+            }
+
+            FuseError error = TraverseFs(path, false, out FsInode? inode);
+            if (error != FuseError.Success)
+            {
+                return (int)error;
+            }
+
+            if (inode is not FsFile file)
+            {
+                return (int)FuseError.IsADirectory;
+            }
+
+            FuseFileInfo fileInfo = fiRef.IsNull ? new FuseFileInfo() : fiRef.Value;
+            return (int)_fsHandler.Truncate(file, length, ref fileInfo);
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine(ex);
+            return (int)FuseError.IoError;
+        }
+    }
+
+    public override int UpdateTimestamps(
+        ReadOnlySpan<byte> path,
+        ref timespec atime,
+        ref timespec mtime,
+        FuseFileInfoRef fiRef)
+    {
+        try
+        {
+            if (!path.StartsWith("/"u8))
+            {
+                throw new ArgumentException("Path is not absolute");
+            }
+
+            FuseError error = TraverseFs(path, false, out FsInode? inode);
+            if (error != FuseError.Success)
+            {
+                return (int)error;
+            }
+
+            if (inode is not FsFile file)
+            {
+                return (int)FuseError.IsADirectory;
+            }
+
+            long accTime = long.Parse(atime.tv_sec.ToString());
+            long accTimeNanoseconds = long.Parse(atime.tv_nsec.ToString());
+            long modifyTime = long.Parse(mtime.tv_sec.ToString());
+            long modifyTimeNanoseconds = long.Parse(mtime.tv_nsec.ToString());
+
+            bool shouldUpdateAccTime = accTimeNanoseconds == LibC.UTIME_OMIT;
+            bool shouldUpdateModifyTime = modifyTimeNanoseconds == LibC.UTIME_OMIT;
+
+            if (accTimeNanoseconds == LibC.UTIME_NOW)
+            {
+                accTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                accTimeNanoseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1_000_000;
+            }
+
+            if (modifyTimeNanoseconds == LibC.UTIME_NOW)
+            {
+                modifyTime = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                modifyTimeNanoseconds = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() * 1_000_000;
+            }
+
+            FuseFileInfo fileInfo = fiRef.IsNull ? new FuseFileInfo() : fiRef.Value;
+            TimestampData timestamp = new()
+            {
+                AccessTime = accTime,
+                AccessTimeNanoseconds = accTimeNanoseconds,
+                ModifyTime = modifyTime,
+                ModifyTimeNanoseconds = modifyTimeNanoseconds,
+                ShouldUpdateAccessTime = shouldUpdateAccTime,
+                ShouldUpdateModifyTime = shouldUpdateModifyTime
+            };
+
+            return (int)_fsHandler.UpdateTimestamps(file, timestamp, ref fileInfo);
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine(ex);
+            return (int)FuseError.IoError;
+        }
+    }
+
+    public override int Unlink(ReadOnlySpan<byte> path)
+    {
+        try
+        {
+            if (!path.StartsWith("/"u8))
+            {
+                throw new ArgumentException("Path is not absolute");
+            }
+
+            FuseError error = TraverseFs(path, false, out FsInode? inode);
+            if (error != FuseError.Success)
+            {
+                return (int)error;
+            }
+
+            if (inode is not FsFile file)
+            {
+                return (int)FuseError.IsADirectory;
+            }
+
+            return (int)_fsHandler.RemoveFile(file);
         }
         catch (Exception ex)
         {

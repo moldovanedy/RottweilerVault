@@ -43,9 +43,9 @@ public class AesXtsWriter
         }
 
         long bytePosition = lbaIndex * BLOCK_SIZE;
-        if (fs.Length < bytePosition)
+        if (fs.Length <= bytePosition + BLOCK_SIZE)
         {
-            FillEmptyData(fs, bytePosition);
+            FillEmptyData(fs, bytePosition + BLOCK_SIZE);
         }
 
         fs.Seek(bytePosition, SeekOrigin.Begin);
@@ -60,9 +60,9 @@ public class AesXtsWriter
         }
 
         long bytePosition = lbaIndex * BLOCK_SIZE;
-        if (fs.Length < bytePosition)
+        if (fs.Length <= bytePosition + BLOCK_SIZE)
         {
-            FillEmptyData(fs, bytePosition);
+            FillEmptyData(fs, bytePosition + BLOCK_SIZE);
         }
 
         fs.Seek(bytePosition, SeekOrigin.Begin);
@@ -155,14 +155,12 @@ public class AesXtsWriter
         return result;
     }
 
-    //TODO: add mutexes for each LBA
-
-    private void WriteData(FileStream fs, byte[] cyphertext)
+    private static void WriteData(FileStream fs, byte[] cyphertext)
     {
         fs.Write(cyphertext);
     }
 
-    private byte[] ReadData(FileStream fs)
+    private static byte[] ReadData(FileStream fs)
     {
         byte[] result = new byte[BLOCK_SIZE];
         fs.ReadExactly(result);

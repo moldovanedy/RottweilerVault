@@ -6,120 +6,115 @@ using RottweilerVault.Ext2.Ext2Structures;
 using RottweilerVault.Ext2.Implementations;
 using RottweilerVault.FsBase;
 using RottweilerVault.FsBase.FsStructures;
-using Tmds.Fuse;
 using Tmds.Linux;
 
 namespace RottweilerVault.Ext2;
 
-internal class Ext2FsHandler : IFsHandler
+internal partial class Ext2FsHandler : IFsHandler
 {
     public bool SupportsMultiThreading => false;
 
     private readonly SuperStructure _superStructure;
 
+    private readonly uint _userUid;
+    private readonly uint _userGid;
+
     public Ext2FsHandler(SuperStructure superStructure)
     {
         _superStructure = superStructure;
+        _userUid = LibC.geteuid();
+        _userGid = LibC.getegid();
     }
 
-    public FsInode? CreateInode(
-        FsDirectory parent,
-        string name,
-        InodeType inodeType,
-        UnixFileMode fileMode,
-        ref FuseFileInfo fileInfo,
-        out FuseError error)
+    public bool IsAccessAllowed(FsInode inode, int accessMode)
     {
-        if (parent.InodeId == 0)
+        if (inode.InodeId == 0)
         {
-            Trace.WriteLine("Assertion failed: parentDir has an inode of 0 in CreateInode");
-            error = FuseError.IoError;
-            return null;
+            Trace.WriteLine($"Assertion failed: {nameof(inode)} has an inode of 0 in IsAccessAllowed");
+            return false;
         }
 
-        if (parent.GetEntryOrNull(name) != null)
+        Inode? rawInode = _superStructure.GetBlockGroupOfInode(inode.InodeId)?.GetLocalInode(inode.InodeId);
+        if (rawInode == null)
         {
-            error = FuseError.AlreadyExists;
-            return null;
+            return false;
         }
 
-        DirectoryImpl? directoryImpl = DirectoryImpl.GetDir(_superStructure, parent.InodeId, parent.Name);
-        if (directoryImpl == null)
+        //checking if file exists, so return true
+        if (accessMode == LibC.F_OK)
         {
-            error = FuseError.IoError;
-            return null;
+            return true;
         }
 
-        switch (inodeType)
+        uint fileGid = ((uint)rawInode.GidHigh << 16) | rawInode.GidLow;
+        uint fileUid = ((uint)rawInode.UidHigh << 16) | rawInode.UidLow;
+
+        UnixFileMode readMask;
+        UnixFileMode writeMask;
+        UnixFileMode executeMask;
+        var actualFileMode = (UnixFileMode)rawInode.Mode;
+
+        if (fileUid == _userUid)
         {
-            case InodeType.Regular:
-            {
-                var fileImpl = FileImpl.Create(_superStructure, directoryImpl, name, fileMode);
-                FsFile newInode = new()
-                {
-                    InodeId = fileImpl.InodeId,
-                    InodeMode = fileMode,
-                    Name = name,
-                    Parent = parent
-                };
-
-                error = FuseError.Success;
-                return newInode;
-            }
-            case InodeType.Directory:
-            {
-                var dirImpl = DirectoryImpl.Create(_superStructure, directoryImpl, name, fileMode);
-                FsDirectory newInode = new()
-                {
-                    InodeId = dirImpl.InodeId,
-                    InodeMode = fileMode,
-                    Name = name,
-                    Parent = parent
-                };
-
-                error = FuseError.Success;
-                return newInode;
-            }
-            default:
-                error = FuseError.IoError;
-                return null;
+            readMask = UnixFileMode.UserRead;
+            writeMask = UnixFileMode.UserWrite;
+            executeMask = UnixFileMode.UserExecute;
         }
+        else if (fileGid == _userGid)
+        {
+            readMask = UnixFileMode.GroupRead;
+            writeMask = UnixFileMode.GroupWrite;
+            executeMask = UnixFileMode.GroupExecute;
+        }
+        else
+        {
+            readMask = UnixFileMode.OtherRead;
+            writeMask = UnixFileMode.OtherWrite;
+            executeMask = UnixFileMode.OtherExecute;
+        }
+
+        if (accessMode == LibC.R_OK)
+        {
+            return (actualFileMode & readMask) != UnixFileMode.None;
+        }
+
+        if (accessMode == LibC.W_OK)
+        {
+            return (actualFileMode & writeMask) != UnixFileMode.None;
+        }
+
+        if (accessMode == LibC.X_OK)
+        {
+            return (actualFileMode & executeMask) != UnixFileMode.None;
+        }
+
+        return false;
     }
 
-    public FuseError RemoveFile(FsFile fileToDelete)
+    public FuseError GetAttributes(FsInode inode, ref stat statAttributes)
     {
-        throw new NotImplementedException();
-    }
-
-    public FuseError RemoveDir(FsDirectory dirToDelete)
-    {
-        throw new NotImplementedException();
-    }
-
-    public FuseError GetAttributes(FsInode inodeToQuery, ref stat statAttributes)
-    {
-        if (inodeToQuery.InodeId == 0)
+        if (inode.InodeId == 0)
         {
-            Trace.WriteLine("Assertion failed: inodeToQuery has an inode of 0 in GetAttributes");
+            Trace.WriteLine($"Assertion failed: {nameof(inode)} has an inode of 0 in GetAttributes");
             return FuseError.IoError;
         }
 
-        BlockGroup? blockGroup = _superStructure.GetBlockGroupOfInode(inodeToQuery.InodeId);
+        BlockGroup? blockGroup = _superStructure.GetBlockGroupOfInode(inode.InodeId);
         if (blockGroup == null)
         {
             return FuseError.IoError;
         }
 
-        Inode rawInode = blockGroup.GetLocalInode(inodeToQuery.InodeId);
+        Inode rawInode = blockGroup.GetLocalInode(inode.InodeId);
         statAttributes.st_blksize = AesXtsWriter.BLOCK_SIZE;
         statAttributes.st_blocks = rawInode.SmallLbaBlocksReserved / 8;
         statAttributes.st_size = ((long)rawInode.DataSizeHigh << 32) | rawInode.DataSizeLow;
 
-        statAttributes.st_ino = inodeToQuery.InodeId;
-        statAttributes.st_uid = rawInode.Uid;
-        statAttributes.st_gid = rawInode.Gid;
+        statAttributes.st_ino = inode.InodeId;
+        statAttributes.st_uid = ((uint)rawInode.UidHigh << 16) | rawInode.UidLow;
+        statAttributes.st_gid = ((uint)rawInode.GidHigh << 16) | rawInode.GidLow;
         statAttributes.st_mode =
-            (inodeToQuery is FsDirectory ? LibC.S_IFDIR : LibC.S_IFREG) | (ushort)inodeToQuery.InodeMode;
+            (inode is FsDirectory ? LibC.S_IFDIR : LibC.S_IFREG) | (ushort)inode.InodeMode;
         // statAttributes.st_nlink = rawInode.HardLinksCount;
         statAttributes.st_nlink = 2;
 
@@ -142,256 +137,17 @@ internal class Ext2FsHandler : IFsHandler
         return FuseError.Success;
     }
 
-    public FuseError OpenFile(FsFile fileToOpen, ref FuseFileInfo fileInfo)
+    public FuseError GetFsStats(ref statvfs stats)
     {
-        return FuseError.Success;
-    }
-
-    public FuseError CloseFile(FsFile fileToClose, ref FuseFileInfo fileInfo)
-    {
-        return FuseError.Success;
-    }
-
-    public int Read(FsFile fileToRead, ulong offset, Span<byte> buffer, ref FuseFileInfo fileInfo, out FuseError error)
-    {
-        if (fileToRead.InodeId == 0)
-        {
-            Trace.WriteLine("Assertion failed: fileToRead has an inode of 0 in Read");
-            error = FuseError.IoError;
-            return 0;
-        }
-
-        BlockGroup? blockGroup = _superStructure.GetBlockGroupOfInode(fileToRead.InodeId);
-        if (blockGroup == null)
-        {
-            error = FuseError.IoError;
-            return 0;
-        }
-
-        if (offset + (ulong)buffer.Length > (ulong)AesXtsWriter.BLOCK_SIZE * uint.MaxValue)
-        {
-            error = FuseError.FileTooLarge;
-            return 0;
-        }
-
-        Inode rawInode = blockGroup.GetLocalInode(fileToRead.InodeId);
-
-        int numBytesRead = 0;
-        uint numBlocksRead = 0;
-        while (numBytesRead < buffer.Length)
-        {
-            uint blockId = _superStructure.GetBlockIdOfInodeDataOffset(
-                rawInode, (uint)(offset / AesXtsWriter.BLOCK_SIZE) + numBlocksRead);
-
-            ReadOnlySpan<byte> blockData;
-            if (blockId == 0)
-            {
-                blockData = new ReadOnlySpan<byte>(new byte[AesXtsWriter.BLOCK_SIZE]);
-            }
-            else
-            {
-                if (!blockGroup.TryGetDataBlock(blockId, out blockData))
-                {
-                    error = FuseError.IoError;
-                    return numBytesRead;
-                }
-            }
-
-            int numBytesToRead = buffer.Length - numBytesRead;
-            if (numBytesToRead < AesXtsWriter.BLOCK_SIZE)
-            {
-                blockData[..numBytesToRead].CopyTo(buffer[numBytesRead..]);
-                numBytesRead += numBytesToRead;
-            }
-            else
-            {
-                blockData.CopyTo(buffer[numBytesRead..]);
-                numBytesRead += AesXtsWriter.BLOCK_SIZE;
-            }
-
-            numBlocksRead++;
-        }
-
-        error = FuseError.Success;
-        return numBytesRead;
-    }
-
-    public int Write(
-        FsFile fileToWriteInto,
-        ulong offset,
-        ReadOnlySpan<byte> buffer,
-        ref FuseFileInfo fileInfo,
-        out FuseError error)
-    {
-        if (fileToWriteInto.InodeId == 0)
-        {
-            Trace.WriteLine("Assertion failed: fileToWriteInto has an inode of 0 in Write");
-            error = FuseError.IoError;
-            return 0;
-        }
-
-        BlockGroup? blockGroup = _superStructure.GetBlockGroupOfInode(fileToWriteInto.InodeId);
-        if (blockGroup == null)
-        {
-            error = FuseError.IoError;
-            return 0;
-        }
-
-        if (offset + (ulong)buffer.Length > (ulong)AesXtsWriter.BLOCK_SIZE * uint.MaxValue)
-        {
-            error = FuseError.FileTooLarge;
-            return 0;
-        }
-
-        Inode rawInode = blockGroup.GetLocalInode(fileToWriteInto.InodeId);
-
-        int numBytesWritten = 0;
-        uint numBlocksWritten = 0;
-        while (numBytesWritten < buffer.Length)
-        {
-            uint inodeDataOffset = (uint)(offset / AesXtsWriter.BLOCK_SIZE) + numBlocksWritten;
-            uint blockId = _superStructure.GetBlockIdOfInodeDataOffset(rawInode, inodeDataOffset);
-            //if 0, reserve another block
-            if (blockId == 0)
-            {
-                try
-                {
-                    _superStructure.AddDataBlockToInode(
-                        rawInode, fileToWriteInto.InodeId, inodeDataOffset, out blockId);
-                }
-                catch
-                {
-                    error = FuseError.IoError;
-                    return numBytesWritten;
-                }
-            }
-
-            byte[] data = new byte[AesXtsWriter.BLOCK_SIZE];
-
-            int numBytesToWrite = buffer.Length - numBytesWritten;
-            if (numBytesToWrite < AesXtsWriter.BLOCK_SIZE)
-            {
-                buffer[numBytesWritten..].CopyTo(data);
-                numBytesWritten += numBytesToWrite;
-            }
-            else
-            {
-                buffer[numBytesWritten..(numBytesWritten + AesXtsWriter.BLOCK_SIZE)].CopyTo(data);
-                numBytesWritten += AesXtsWriter.BLOCK_SIZE;
-            }
-
-            blockGroup.UpdateDataBlockOnDisk(blockId, data);
-            numBlocksWritten++;
-        }
-
-        ulong totalSize = offset + (ulong)buffer.Length;
-        rawInode.DataSizeLow = (uint)totalSize;
-        rawInode.DataSizeHigh = (uint)(totalSize >> 32);
-
-        rawInode.LastAccessTime = (uint)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        rawInode.LastWriteTime = rawInode.LastAccessTime;
-        blockGroup.UpdateInodeOnDisk(fileToWriteInto.InodeId, rawInode);
-
-        error = FuseError.Success;
-        return numBytesWritten;
-    }
-
-    public FuseError RenameFile(FsDirectory parentDir, string oldName, string newName, int flags)
-    {
-        if (parentDir.InodeId == 0)
-        {
-            Trace.WriteLine("Assertion failed: parentDir has an inode of 0 in RenameFile");
-            return FuseError.IoError;
-        }
-
-        if (parentDir.GetEntryOrNull(newName) != null)
-        {
-            return FuseError.AlreadyExists;
-        }
-
-        FsInode? inode = GetInodeIfExists(parentDir, oldName, out FuseError error);
-        if (error != FuseError.Success || inode == null)
-        {
-            return error;
-        }
-
-        BlockGroup? blockGroup = _superStructure.GetBlockGroupOfInode(parentDir.InodeId);
-        if (blockGroup == null)
-        {
-            return FuseError.IoError;
-        }
-
-        FileImpl? fileImpl = FileImpl.GetFile(_superStructure, inode.InodeId, oldName);
-        if (fileImpl == null)
-        {
-            return FuseError.IoError;
-        }
-
-        fileImpl.Name = newName;
-        DirectoryImpl? directoryImpl = DirectoryImpl.GetDir(_superStructure, parentDir.InodeId, parentDir.Name);
-        directoryImpl?.UpdateDescendant(oldName, fileImpl);
-
-        Inode rawInode = blockGroup.GetLocalInode(parentDir.InodeId);
-        //update the directory inode itself
-        blockGroup.UpdateInodeOnDisk(parentDir.InodeId, rawInode);
-        return FuseError.Success;
-    }
-
-    public FuseError Chmod(FsInode inode, UnixFileMode newMode, ref FuseFileInfo fileInfo)
-    {
-        if (inode.InodeId == 0)
-        {
-            Trace.WriteLine("Assertion failed: inode has an inode of 0 in Chmod");
-            return FuseError.IoError;
-        }
-
-        BlockGroup? blockGroup = _superStructure.GetBlockGroupOfInode(inode.InodeId);
-        if (blockGroup == null)
-        {
-            return FuseError.IoError;
-        }
-
-        FileImpl? fileImpl = FileImpl.GetFile(_superStructure, inode.InodeId, inode.Name);
-        if (fileImpl == null)
-        {
-            return FuseError.IoError;
-        }
-
-        fileImpl.Inode.Mode =
-            (ushort)((fileImpl.InodeType == DirEntryFileType.Directory
-                ? (ushort)InodeType.Directory
-                : (ushort)InodeType.Regular) | (ushort)newMode);
-        blockGroup.UpdateInodeOnDisk(fileImpl.InodeId, fileImpl.Inode);
-
-        return FuseError.Success;
-    }
-
-    public FuseError Chown(FsInode inode, uint uid, uint gid, ref FuseFileInfo fileInfo)
-    {
-        if (inode.InodeId == 0)
-        {
-            Trace.WriteLine("Assertion failed: inode has an inode of 0 in Chown");
-            return FuseError.IoError;
-        }
-
-        BlockGroup? blockGroup = _superStructure.GetBlockGroupOfInode(inode.InodeId);
-        if (blockGroup == null)
-        {
-            return FuseError.IoError;
-        }
-
-        FileImpl? fileImpl = FileImpl.GetFile(_superStructure, inode.InodeId, inode.Name);
-        if (fileImpl == null)
-        {
-            return FuseError.IoError;
-        }
-
-        //TODO: add the l_i_uid_high and l_i_gid_high fields in the raw inode
-        fileImpl.Inode.Uid = (ushort)uid;
-        fileImpl.Inode.Gid = (ushort)gid;
-        fileImpl.Inode.LastWriteTime = (uint)DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-        blockGroup.UpdateInodeOnDisk(fileImpl.InodeId, fileImpl.Inode);
-
+        stats.f_bsize = AesXtsWriter.BLOCK_SIZE;
+        stats.f_frsize = AesXtsWriter.BLOCK_SIZE;
+        stats.f_blocks = Superblock.NumBlocks;
+        stats.f_bfree = _superStructure.ExtSuperblock.NumUnallocatedBlocks;
+        stats.f_bavail = _superStructure.ExtSuperblock.NumUnallocatedBlocks;
+        stats.f_files = Superblock.NumInodes;
+        stats.f_ffree = _superStructure.ExtSuperblock.NumUnallocatedInodes;
+        stats.f_favail = _superStructure.ExtSuperblock.NumUnallocatedInodes;
+        stats.f_namemax = 255;
         return FuseError.Success;
     }
 
@@ -497,9 +253,49 @@ internal class Ext2FsHandler : IFsHandler
 
                 return null;
             },
-            () => { dirImplEnumerator.Reset(); });
+            dirImplEnumerator.Reset);
 
         error = FuseError.Success;
         return enumerator;
+    }
+
+
+    private bool IsAccessGranted(uint fileUid, uint fileGid, UnixFileMode fileMode, int accessMode)
+    {
+        UnixFileMode readMask;
+        UnixFileMode writeMask;
+
+        if (fileUid == _userUid)
+        {
+            readMask = UnixFileMode.UserRead;
+            writeMask = UnixFileMode.UserWrite;
+        }
+        else if (fileGid == _userGid)
+        {
+            readMask = UnixFileMode.GroupRead;
+            writeMask = UnixFileMode.GroupWrite;
+        }
+        else
+        {
+            readMask = UnixFileMode.OtherRead;
+            writeMask = UnixFileMode.OtherWrite;
+        }
+
+        if (accessMode == LibC.O_RDONLY)
+        {
+            return (fileMode & readMask) != UnixFileMode.None;
+        }
+
+        if (accessMode == LibC.O_WRONLY)
+        {
+            return (fileMode & writeMask) != UnixFileMode.None;
+        }
+
+        if (accessMode == LibC.O_RDWR)
+        {
+            return (fileMode & writeMask) != UnixFileMode.None && (fileMode & readMask) != UnixFileMode.None;
+        }
+
+        return false;
     }
 }

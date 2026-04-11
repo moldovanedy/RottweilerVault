@@ -187,7 +187,7 @@ internal class BlockGroup
             _inodeTableCache.Remove(inodeId);
 
             uint localInodeIndex = (inodeId - 1) % Inode.NUM_INODES_IN_TABLE;
-            _inodeBitmap[localInodeIndex / 8] |= (byte)(0b10000000 >> (int)(localInodeIndex % 8));
+            _inodeBitmap[localInodeIndex / 8] &= (byte)~(0b10000000 >> (int)(localInodeIndex % 8));
             WriteInodeBitmap();
             UpdateInodeOnDisk(inodeId, new Inode());
 
@@ -312,10 +312,10 @@ internal class BlockGroup
             uint localBlockId = blockId % Superblock.NumBlocksPerGroup;
             if (localBlockId < SuperStructure.NUM_NON_DATA_BLOCKS_PER_GROUP)
             {
-                throw new ArgumentOutOfRangeException(nameof(blockId), "Tried to reserve a non-data block");
+                throw new ArgumentOutOfRangeException(nameof(blockId), "Tried to free a non-data block");
             }
 
-            _blockBitmap[localBlockId / 8] |= (byte)(0b10000000 >> (int)(localBlockId % 8));
+            _blockBitmap[localBlockId / 8] &= (byte)~(0b10000000 >> (int)(localBlockId % 8));
             WriteBlockBitmap();
 
             Ext2BlockDescriptor.NumFreeBlocks++;
@@ -325,6 +325,35 @@ internal class BlockGroup
         {
             Trace.WriteLine(ex);
         }
+    }
+
+    /// <summary>
+    /// Does not write changes until you call <see cref="CommitDataBlockChanges"/>
+    /// </summary>
+    /// <param name="blockId"></param>
+    public void FreeDataBlockFast(uint blockId)
+    {
+        try
+        {
+            uint localBlockId = blockId % Superblock.NumBlocksPerGroup;
+            if (localBlockId < SuperStructure.NUM_NON_DATA_BLOCKS_PER_GROUP)
+            {
+                throw new ArgumentOutOfRangeException(nameof(blockId), "Tried to free a non-data block");
+            }
+
+            _blockBitmap[localBlockId / 8] &= (byte)~(0b10000000 >> (int)(localBlockId % 8));
+            Ext2BlockDescriptor.NumFreeBlocks++;
+        }
+        catch (Exception ex)
+        {
+            Trace.WriteLine(ex);
+        }
+    }
+
+    public void CommitDataBlockChanges()
+    {
+        WriteBlockBitmap();
+        WriteBackupBlockGroupDescriptorTable();
     }
 
     #endregion
