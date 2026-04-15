@@ -180,11 +180,11 @@ internal class SuperStructure : IDisposable
                 inodeDataOffset -= 12 + NUM_BLOCKS_IN_INDIRECTION_BLOCK;
 
                 byte[] doubleIndirect = CryptoWriter.DecryptLba(SharedFs, inode.DataBlocksIds[13]);
-                uint singleIndirectIdx = BinaryUtils.ConvertBytesToUint(
+                uint singleIndirectBlockId = BinaryUtils.ConvertBytesToUint(
                     doubleIndirect,
                     (int)(inodeDataOffset / NUM_BLOCKS_IN_INDIRECTION_BLOCK * sizeof(uint)));
 
-                byte[] singleIndirect = CryptoWriter.DecryptLba(SharedFs, doubleIndirect[singleIndirectIdx]);
+                byte[] singleIndirect = CryptoWriter.DecryptLba(SharedFs, singleIndirectBlockId);
                 return BinaryUtils.ConvertBytesToUint(
                     singleIndirect,
                     (int)(inodeDataOffset % NUM_BLOCKS_IN_INDIRECTION_BLOCK * sizeof(uint)));
@@ -199,18 +199,18 @@ internal class SuperStructure : IDisposable
                 inodeDataOffset -= 12 + NUM_BLOCKS_IN_INDIRECTION_BLOCK * NUM_BLOCKS_IN_INDIRECTION_BLOCK;
 
                 byte[] tripleIndirect = CryptoWriter.DecryptLba(SharedFs, inode.DataBlocksIds[14]);
-                uint doubleIndirectIdx = BinaryUtils.ConvertBytesToUint(
+                uint doubleIndirectBlockId = BinaryUtils.ConvertBytesToUint(
                     tripleIndirect,
                     (int)(inodeDataOffset
                         / (NUM_BLOCKS_IN_INDIRECTION_BLOCK * NUM_BLOCKS_IN_INDIRECTION_BLOCK) * sizeof(uint)));
 
-                byte[] doubleIndirect = CryptoWriter.DecryptLba(SharedFs, tripleIndirect[doubleIndirectIdx]);
-                uint singleIndirectIdx = BinaryUtils.ConvertBytesToUint(
+                byte[] doubleIndirect = CryptoWriter.DecryptLba(SharedFs, doubleIndirectBlockId);
+                uint singleIndirectBlockId = BinaryUtils.ConvertBytesToUint(
                     doubleIndirect,
                     (int)(inodeDataOffset / NUM_BLOCKS_IN_INDIRECTION_BLOCK
                         % NUM_BLOCKS_IN_INDIRECTION_BLOCK * sizeof(uint)));
 
-                byte[] singleIndirect = CryptoWriter.DecryptLba(SharedFs, doubleIndirect[singleIndirectIdx]);
+                byte[] singleIndirect = CryptoWriter.DecryptLba(SharedFs, singleIndirectBlockId);
                 return BinaryUtils.ConvertBytesToUint(
                     singleIndirect,
                     (int)(inodeDataOffset % NUM_BLOCKS_IN_INDIRECTION_BLOCK * sizeof(uint)));
@@ -305,13 +305,14 @@ internal class SuperStructure : IDisposable
             }
             case < 12 + NUM_BLOCKS_IN_INDIRECTION_BLOCK * NUM_BLOCKS_IN_INDIRECTION_BLOCK:
             {
+                uint originalInodeDataOffset = inodeDataOffset;
                 inodeDataOffset -= 12 + NUM_BLOCKS_IN_INDIRECTION_BLOCK;
 
                 byte[] doubleIndirect = CryptoWriter.DecryptLba(SharedFs, inode.DataBlocksIds[13]);
                 int startIdx = (int)(inodeDataOffset / NUM_BLOCKS_IN_INDIRECTION_BLOCK * sizeof(uint));
                 uint previousBlockId = BinaryUtils.ConvertBytesToUint(doubleIndirect, startIdx);
-                uint singleIndirectIdx = BinaryUtils.ConvertBytesToUint(doubleIndirect, startIdx);
-                CryptoWriter.EncryptLba(SharedFs, inode.DataBlocksIds[13], doubleIndirect);
+                // uint singleIndirectIdx = BinaryUtils.ConvertBytesToUint(doubleIndirect, startIdx);
+                // CryptoWriter.EncryptLba(SharedFs, inode.DataBlocksIds[13], doubleIndirect);
 
                 if (previousBlockId == 0 && blockId != 0)
                 {
@@ -325,9 +326,7 @@ internal class SuperStructure : IDisposable
                 }
 
 
-                uint? singleIndirectBlockId = BinaryUtils.ConvertBytesToUint(
-                    doubleIndirect,
-                    (int)singleIndirectIdx);
+                uint? singleIndirectBlockId = previousBlockId;
                 if (singleIndirectBlockId == 0)
                 {
                     singleIndirectBlockId = ReserveDataBlock();
@@ -339,10 +338,12 @@ internal class SuperStructure : IDisposable
                     GetBlockGroupOfInode(inodeId)
                         ?.UpdateDataBlockOnDisk(singleIndirectBlockId.Value, new byte[AesXtsWriter.BLOCK_SIZE]);
 
-                    BinaryUtils.ConvertUintToBytes(singleIndirectBlockId.Value, doubleIndirect, (int)singleIndirectIdx);
+                    BinaryUtils.ConvertUintToBytes(singleIndirectBlockId.Value, doubleIndirect, startIdx);
+                    CryptoWriter.EncryptLba(SharedFs, inode.DataBlocksIds[13], doubleIndirect);
+
                     //retry
                     // ReSharper disable once TailRecursiveCall
-                    SetBlockIdToInodeDataOffset(inode, inodeId, blockId, inodeDataOffset);
+                    SetBlockIdToInodeDataOffset(inode, inodeId, blockId, originalInodeDataOffset);
                 }
 
                 byte[] singleIndirect = CryptoWriter.DecryptLba(SharedFs, singleIndirectBlockId.Value);
@@ -388,14 +389,15 @@ internal class SuperStructure : IDisposable
             case < 12 + NUM_BLOCKS_IN_INDIRECTION_BLOCK * NUM_BLOCKS_IN_INDIRECTION_BLOCK *
                 NUM_BLOCKS_IN_INDIRECTION_BLOCK:
             {
+                uint originalInodeDataOffset = inodeDataOffset;
                 inodeDataOffset -= 12 + NUM_BLOCKS_IN_INDIRECTION_BLOCK * NUM_BLOCKS_IN_INDIRECTION_BLOCK;
 
                 byte[] tripleIndirect = CryptoWriter.DecryptLba(SharedFs, inode.DataBlocksIds[14]);
                 int startIdx = (int)(inodeDataOffset /
                     (NUM_BLOCKS_IN_INDIRECTION_BLOCK * NUM_BLOCKS_IN_INDIRECTION_BLOCK) * sizeof(uint));
                 uint previousBlockId = BinaryUtils.ConvertBytesToUint(tripleIndirect, startIdx);
-                uint doubleIndirectIdx = BinaryUtils.ConvertBytesToUint(tripleIndirect, startIdx);
-                CryptoWriter.EncryptLba(SharedFs, inode.DataBlocksIds[14], tripleIndirect);
+                // uint doubleIndirectIdx = BinaryUtils.ConvertBytesToUint(tripleIndirect, startIdx);
+                // CryptoWriter.EncryptLba(SharedFs, inode.DataBlocksIds[14], tripleIndirect);
 
                 if (previousBlockId == 0 && blockId != 0)
                 {
@@ -409,9 +411,7 @@ internal class SuperStructure : IDisposable
                 }
 
 
-                uint? doubleIndirectBlockId = BinaryUtils.ConvertBytesToUint(
-                    tripleIndirect,
-                    (int)doubleIndirectIdx);
+                uint? doubleIndirectBlockId = previousBlockId;
                 if (doubleIndirectBlockId == 0)
                 {
                     doubleIndirectBlockId = ReserveDataBlock();
@@ -423,18 +423,20 @@ internal class SuperStructure : IDisposable
                     GetBlockGroupOfInode(inodeId)
                         ?.UpdateDataBlockOnDisk(doubleIndirectBlockId.Value, new byte[AesXtsWriter.BLOCK_SIZE]);
 
-                    BinaryUtils.ConvertUintToBytes(doubleIndirectBlockId.Value, tripleIndirect, (int)doubleIndirectIdx);
+                    BinaryUtils.ConvertUintToBytes(doubleIndirectBlockId.Value, tripleIndirect, startIdx);
+                    CryptoWriter.EncryptLba(SharedFs, inode.DataBlocksIds[14], tripleIndirect);
+
                     //retry
                     // ReSharper disable once TailRecursiveCall
-                    SetBlockIdToInodeDataOffset(inode, inodeId, blockId, inodeDataOffset);
+                    SetBlockIdToInodeDataOffset(inode, inodeId, blockId, originalInodeDataOffset);
                 }
 
                 byte[] doubleIndirect = CryptoWriter.DecryptLba(SharedFs, doubleIndirectBlockId.Value);
                 startIdx = (int)(inodeDataOffset / NUM_BLOCKS_IN_INDIRECTION_BLOCK
                     % NUM_BLOCKS_IN_INDIRECTION_BLOCK * sizeof(uint));
                 previousBlockId = BinaryUtils.ConvertBytesToUint(doubleIndirect, startIdx);
-                uint singleIndirectIdx = BinaryUtils.ConvertBytesToUint(doubleIndirect, startIdx);
-                CryptoWriter.EncryptLba(SharedFs, doubleIndirectBlockId.Value, doubleIndirect);
+                // uint singleIndirectIdx = BinaryUtils.ConvertBytesToUint(doubleIndirect, startIdx);
+                // CryptoWriter.EncryptLba(SharedFs, doubleIndirectBlockId.Value, doubleIndirect);
 
                 if (previousBlockId == 0 && blockId != 0)
                 {
@@ -448,9 +450,7 @@ internal class SuperStructure : IDisposable
                 }
 
 
-                uint? singleIndirectBlockId = BinaryUtils.ConvertBytesToUint(
-                    doubleIndirect,
-                    (int)singleIndirectIdx);
+                uint? singleIndirectBlockId = previousBlockId;
                 if (singleIndirectBlockId == 0)
                 {
                     singleIndirectBlockId = ReserveDataBlock();
@@ -462,7 +462,9 @@ internal class SuperStructure : IDisposable
                     GetBlockGroupOfInode(inodeId)
                         ?.UpdateDataBlockOnDisk(singleIndirectBlockId.Value, new byte[AesXtsWriter.BLOCK_SIZE]);
 
-                    BinaryUtils.ConvertUintToBytes(singleIndirectBlockId.Value, doubleIndirect, (int)singleIndirectIdx);
+                    BinaryUtils.ConvertUintToBytes(singleIndirectBlockId.Value, doubleIndirect, startIdx);
+                    CryptoWriter.EncryptLba(SharedFs, doubleIndirectBlockId.Value, doubleIndirect);
+
                     //retry
                     // ReSharper disable once TailRecursiveCall
                     SetBlockIdToInodeDataOffset(inode, inodeId, blockId, inodeDataOffset);

@@ -15,7 +15,6 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <ProjectReference Include="..\RottweilerVault.DummyFs\RottweilerVault.DummyFs.csproj" />
         <ProjectReference Include="..\RottweilerVault.Ext2\RottweilerVault.Ext2.csproj" />
     </ItemGroup>
 

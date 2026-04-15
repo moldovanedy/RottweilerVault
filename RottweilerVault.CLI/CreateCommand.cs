@@ -1,8 +1,6 @@
 using System;
 using System.IO;
-using System.Text;
 using System.Text.RegularExpressions;
-using RottweilerVault.DummyFs;
 using RottweilerVault.Ext2;
 using RottweilerVault.FsBase.Utils;
 
@@ -17,7 +15,7 @@ public static partial class CreateCommand
             throw new ArgumentException("Assertion failed: No arguments provided for create (not even itself)");
         }
 
-        if (args.Length < 3)
+        if (args.Length < 2)
         {
             Console.WriteLine("ERROR: Too few arguments provided");
             PrintHelp();
@@ -61,25 +59,8 @@ public static partial class CreateCommand
         //request password from stdin
         if (string.IsNullOrEmpty(password))
         {
-            StringBuilder sb = new();
             Console.Write("Password:");
-
-            ConsoleKeyInfo keyInfo;
-            while ((keyInfo = Console.ReadKey(true)).Key != ConsoleKey.Enter)
-            {
-                if (keyInfo.Key == ConsoleKey.Backspace && sb.Length > 0)
-                {
-                    sb.Remove(sb.Length - 1, 1);
-                    continue;
-                }
-
-                if (keyInfo.KeyChar != 0)
-                {
-                    sb.Append(keyInfo.KeyChar);
-                }
-            }
-
-            password = sb.ToString();
+            password = Program.GetStdinPassword();
             Console.WriteLine();
             if (string.IsNullOrWhiteSpace(password))
             {
@@ -105,10 +86,6 @@ public static partial class CreateCommand
                     Ext2VolumeHandler ext2VolumeHandler = new(volumeName, key1, key2);
                     ext2VolumeHandler.Create();
                     break;
-                case "dummy":
-                    DummyVolumeHandler dummyVolumeHandler = new(volumeName);
-                    dummyVolumeHandler.Create();
-                    break;
                 default:
                     Console.WriteLine($"ERROR: Unknown file system type specified (\"{fileSystemType}\")");
                     Environment.Exit(1);
@@ -133,8 +110,8 @@ public static partial class CreateCommand
 
         Console.WriteLine("Parameters:");
         Console.WriteLine("  volume_name:        Mandatory. Specifies the encrypted volume name.");
-        Console.WriteLine("  file_system:        Mandatory. Specifies the file system type. Accepted values\n" +
-                          "                      are: \"ext2\" and \"dummy\".");
+        Console.WriteLine("  file_system:        Mandatory. Specifies the file system type. The only\n" +
+                          "                      possible value is: \"ext2\".");
         Console.WriteLine();
 
         Console.WriteLine("Options:");

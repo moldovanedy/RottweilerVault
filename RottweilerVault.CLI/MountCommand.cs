@@ -1,9 +1,7 @@
 using System;
 using System.IO;
 using System.Security.Cryptography;
-using System.Text;
 using System.Threading;
-using RottweilerVault.DummyFs;
 using RottweilerVault.Ext2;
 using RottweilerVault.FsBase;
 using RottweilerVault.FsBase.Utils;
@@ -18,7 +16,6 @@ public static class MountCommand
     private static string _password = string.Empty;
     private static string _fsHint = string.Empty;
 
-    //TODO: use the cancellation token inside the actual FS implementation, so as to wait for any pending operations
     public static void Run(string[] args, CancellationToken cancellationToken = default)
     {
         if (args.Length < 1)
@@ -42,7 +39,7 @@ public static class MountCommand
         ParseArguments(args);
 
         (byte[] key1, byte[] key2) = KeyDerivationUtils.DeriveFromPlainPassword(_password, GetStoredSalt());
-        string[] fileSystems = ["dummy", "ext2"];
+        string[] fileSystems = ["ext2"];
 
         if (!string.IsNullOrEmpty(_fsHint))
         {
@@ -54,15 +51,12 @@ public static class MountCommand
             }
         }
 
-        IEncryptedVolumeHandler? volumeHandler = null;
+        Ext2VolumeHandler? volumeHandler = null;
         bool hasFoundSupportedFs = false;
         foreach (string fileSystem in fileSystems)
         {
             switch (fileSystem)
             {
-                case "dummy":
-                    volumeHandler = new DummyVolumeHandler(_volumeName);
-                    break;
                 case "ext2":
                     volumeHandler = new Ext2VolumeHandler(_volumeName, key1, key2);
                     break;
@@ -88,12 +82,13 @@ public static class MountCommand
 
         try
         {
-            IFuseFileSystem fsImplementation = volumeHandler.GetFsImplementation(cancellationToken);
+            FuseHandler fsImplementation = volumeHandler.GetFsImplementation(cancellationToken);
             MountOptions options = new()
             {
                 SingleThread = fsImplementation.SupportsMultiThreading
             };
 
+            Program.FsHandler = fsImplementation;
             using IFuseMount mountConnection = Fuse.Mount(_mountPoint, fsImplementation, options);
 
             Console.WriteLine($"Mounted volume \"{_volumeName}\" at path \"{_mountPoint}\"");
@@ -133,8 +128,8 @@ public static class MountCommand
                           "                      as command-line arguments might be visible in different\n" +
                           "                      places around the system, affecting security.");
         Console.WriteLine("  --fs-hint <fs>:     Specifies a hint for the used file system so the\n" +
-                          "                      initialization is faster. For now, only \"ext2\" and\n" +
-                          "                      \"dummy\" are supported.");
+                          "                      initialization is faster. For now, only \"ext2\"\n" +
+                          "                      is supported.");
     }
 
     private static void ParseArguments(string[] args)
@@ -158,6 +153,12 @@ public static class MountCommand
         else
         {
             _mountPoint = Path.Combine(VolumeManagementUtils.GetAppDataDirectoryPath(), _volumeName + "_data");
+        }
+
+        if (!File.Exists(Path.Combine(VolumeManagementUtils.GetAppDataDirectoryPath(), _volumeName)))
+        {
+            Console.WriteLine("ERROR: Volume with the specified name does not exist");
+            Environment.Exit(1);
         }
 
         bool wasSpecifyingPassword = false;
@@ -198,25 +199,8 @@ public static class MountCommand
         //request password from stdin
         if (string.IsNullOrEmpty(_password))
         {
-            StringBuilder sb = new();
             Console.Write("Password:");
-
-            ConsoleKeyInfo keyInfo;
-            while ((keyInfo = Console.ReadKey(true)).Key != ConsoleKey.Enter)
-            {
-                if (keyInfo.Key == ConsoleKey.Backspace && sb.Length > 0)
-                {
-                    sb.Remove(sb.Length - 1, 1);
-                    continue;
-                }
-
-                if (keyInfo.KeyChar != 0)
-                {
-                    sb.Append(keyInfo.KeyChar);
-                }
-            }
-
-            _password = sb.ToString();
+            _password = Program.GetStdinPassword();
             Console.WriteLine();
             if (string.IsNullOrWhiteSpace(_password))
             {

@@ -2,6 +2,7 @@ using System;
 using System.Diagnostics;
 using System.IO;
 using System.Text;
+using System.Threading;
 using RottweilerVault.FsBase.FsStructures;
 using Tmds.Fuse;
 using Tmds.Linux;
@@ -12,28 +13,33 @@ public class FuseHandler : FuseFileSystemBase
 {
     public override bool SupportsMultiThreading => _fsHandler.SupportsMultiThreading;
 
+    public int NumFuseThreadsRunning => _numFuseThreadsRunning;
+    private int _numFuseThreadsRunning;
+
     private readonly IFsHandler _fsHandler;
     private readonly FsDirectory _rootDir;
+    private readonly CancellationToken _cancellationToken;
 
     private const UnixFileMode DIRECTORY_DEFAULT_MODE =
         UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
         | UnixFileMode.GroupRead | UnixFileMode.GroupExecute
         | UnixFileMode.OtherRead | UnixFileMode.OtherExecute;
 
-    // private const UnixFileMode REGULAR_FILE_DEFAULT_MODE =
-    //     UnixFileMode.UserRead
-    //     | UnixFileMode.UserWrite
-    //     | UnixFileMode.GroupRead
-    //     | UnixFileMode.OtherRead;
-
-    public FuseHandler(IFsHandler fsHandler, FsDirectory rootDir)
+    public FuseHandler(IFsHandler fsHandler, FsDirectory rootDir, CancellationToken cancellationToken)
     {
         _fsHandler = fsHandler;
         _rootDir = rootDir;
+        _cancellationToken = cancellationToken;
     }
 
     public override int Access(ReadOnlySpan<byte> path, mode_t mode)
     {
+        bool canStart = CanStartThread();
+        if (!canStart)
+        {
+            return (int)FuseError.NoData;
+        }
+
         try
         {
             if (!path.StartsWith("/"u8))
@@ -61,10 +67,20 @@ public class FuseHandler : FuseFileSystemBase
             Trace.WriteLine(ex);
             return (int)FuseError.IoError;
         }
+        finally
+        {
+            EndThread();
+        }
     }
 
     public override int Chown(ReadOnlySpan<byte> path, uint uid, uint gid, FuseFileInfoRef fiRef)
     {
+        bool canStart = CanStartThread();
+        if (!canStart)
+        {
+            return (int)FuseError.NoData;
+        }
+
         try
         {
             if (!path.StartsWith("/"u8))
@@ -96,10 +112,20 @@ public class FuseHandler : FuseFileSystemBase
             Trace.WriteLine(ex);
             return (int)FuseError.IoError;
         }
+        finally
+        {
+            EndThread();
+        }
     }
 
     public override int ChMod(ReadOnlySpan<byte> path, mode_t mode, FuseFileInfoRef fiRef)
     {
+        bool canStart = CanStartThread();
+        if (!canStart)
+        {
+            return (int)FuseError.NoData;
+        }
+
         try
         {
             if (!path.StartsWith("/"u8))
@@ -133,10 +159,20 @@ public class FuseHandler : FuseFileSystemBase
             Trace.WriteLine(ex);
             return (int)FuseError.IoError;
         }
+        finally
+        {
+            EndThread();
+        }
     }
 
     public override int Create(ReadOnlySpan<byte> path, mode_t mode, ref FuseFileInfo fi)
     {
+        bool canStart = CanStartThread();
+        if (!canStart)
+        {
+            return (int)FuseError.NoData;
+        }
+
         try
         {
             if (!path.StartsWith("/"u8))
@@ -184,10 +220,20 @@ public class FuseHandler : FuseFileSystemBase
             Trace.WriteLine(ex);
             return (int)FuseError.IoError;
         }
+        finally
+        {
+            EndThread();
+        }
     }
 
     public override int GetAttr(ReadOnlySpan<byte> path, ref stat stat, FuseFileInfoRef fiRef)
     {
+        bool canStart = CanStartThread();
+        if (!canStart)
+        {
+            return (int)FuseError.NoData;
+        }
+
         try
         {
             if (!path.StartsWith("/"u8))
@@ -218,10 +264,20 @@ public class FuseHandler : FuseFileSystemBase
             Trace.WriteLine(ex);
             return (int)FuseError.IoError;
         }
+        finally
+        {
+            EndThread();
+        }
     }
 
     public override int FAllocate(ReadOnlySpan<byte> path, int mode, ulong offset, long length, ref FuseFileInfo fi)
     {
+        bool canStart = CanStartThread();
+        if (!canStart)
+        {
+            return (int)FuseError.NoData;
+        }
+
         try
         {
             if (!path.StartsWith("/"u8))
@@ -247,10 +303,20 @@ public class FuseHandler : FuseFileSystemBase
             Trace.WriteLine(ex);
             return (int)FuseError.IoError;
         }
+        finally
+        {
+            EndThread();
+        }
     }
 
     public override int MkDir(ReadOnlySpan<byte> path, mode_t mode)
     {
+        bool canStart = CanStartThread();
+        if (!canStart)
+        {
+            return (int)FuseError.NoData;
+        }
+
         try
         {
             if (!path.StartsWith("/"u8))
@@ -304,10 +370,20 @@ public class FuseHandler : FuseFileSystemBase
             Trace.WriteLine(ex);
             return (int)FuseError.IoError;
         }
+        finally
+        {
+            EndThread();
+        }
     }
 
     public override int Open(ReadOnlySpan<byte> path, ref FuseFileInfo fi)
     {
+        bool canStart = CanStartThread();
+        if (!canStart)
+        {
+            return (int)FuseError.NoData;
+        }
+
         try
         {
             if (!path.StartsWith("/"u8))
@@ -333,10 +409,20 @@ public class FuseHandler : FuseFileSystemBase
             Trace.WriteLine(ex);
             return (int)FuseError.IoError;
         }
+        finally
+        {
+            EndThread();
+        }
     }
 
     public override int OpenDir(ReadOnlySpan<byte> path, ref FuseFileInfo fi)
     {
+        bool canStart = CanStartThread();
+        if (!canStart)
+        {
+            return (int)FuseError.NoData;
+        }
+
         try
         {
             if (!path.StartsWith("/"u8))
@@ -362,10 +448,20 @@ public class FuseHandler : FuseFileSystemBase
             Trace.WriteLine(ex);
             return (int)FuseError.IoError;
         }
+        finally
+        {
+            EndThread();
+        }
     }
 
     public override int Read(ReadOnlySpan<byte> path, ulong offset, Span<byte> buffer, ref FuseFileInfo fi)
     {
+        bool canStart = CanStartThread();
+        if (!canStart)
+        {
+            return (int)FuseError.NoData;
+        }
+
         try
         {
             if (!path.StartsWith("/"u8))
@@ -403,11 +499,21 @@ public class FuseHandler : FuseFileSystemBase
             Trace.WriteLine(ex);
             return (int)FuseError.IoError;
         }
+        finally
+        {
+            EndThread();
+        }
     }
 
     public override int ReadDir(
         ReadOnlySpan<byte> path, ulong offset, ReadDirFlags flags, DirectoryContent content, ref FuseFileInfo fi)
     {
+        bool canStart = CanStartThread();
+        if (!canStart)
+        {
+            return (int)FuseError.NoData;
+        }
+
         try
         {
             if (!path.StartsWith("/"u8))
@@ -463,10 +569,20 @@ public class FuseHandler : FuseFileSystemBase
             Trace.WriteLine(ex);
             return (int)FuseError.IoError;
         }
+        finally
+        {
+            EndThread();
+        }
     }
 
     public override int Rename(ReadOnlySpan<byte> path, ReadOnlySpan<byte> newPath, int flags)
     {
+        bool canStart = CanStartThread();
+        if (!canStart)
+        {
+            return (int)FuseError.NoData;
+        }
+
         try
         {
             if (!path.StartsWith("/"u8) || !newPath.StartsWith("/"u8))
@@ -521,15 +637,32 @@ public class FuseHandler : FuseFileSystemBase
             Trace.WriteLine(ex);
             return (int)FuseError.IoError;
         }
+        finally
+        {
+            EndThread();
+        }
     }
 
     public override int ReleaseDir(ReadOnlySpan<byte> path, ref FuseFileInfo fi)
     {
+        bool canStart = CanStartThread();
+        if (!canStart)
+        {
+            return (int)FuseError.NoData;
+        }
+
+        EndThread();
         return (int)FuseError.Success;
     }
 
     public override int RmDir(ReadOnlySpan<byte> path)
     {
+        bool canStart = CanStartThread();
+        if (!canStart)
+        {
+            return (int)FuseError.NoData;
+        }
+
         try
         {
             if (!path.StartsWith("/"u8))
@@ -555,10 +688,20 @@ public class FuseHandler : FuseFileSystemBase
             Trace.WriteLine(ex);
             return (int)FuseError.IoError;
         }
+        finally
+        {
+            EndThread();
+        }
     }
 
     public override int StatFS(ReadOnlySpan<byte> path, ref statvfs statfs)
     {
+        bool canStart = CanStartThread();
+        if (!canStart)
+        {
+            return (int)FuseError.NoData;
+        }
+
         try
         {
             return (int)_fsHandler.GetFsStats(ref statfs);
@@ -568,10 +711,20 @@ public class FuseHandler : FuseFileSystemBase
             Trace.WriteLine(ex);
             return (int)FuseError.IoError;
         }
+        finally
+        {
+            EndThread();
+        }
     }
 
     public override int Truncate(ReadOnlySpan<byte> path, ulong length, FuseFileInfoRef fiRef)
     {
+        bool canStart = CanStartThread();
+        if (!canStart)
+        {
+            return (int)FuseError.NoData;
+        }
+
         try
         {
             if (!path.StartsWith("/"u8))
@@ -598,6 +751,10 @@ public class FuseHandler : FuseFileSystemBase
             Trace.WriteLine(ex);
             return (int)FuseError.IoError;
         }
+        finally
+        {
+            EndThread();
+        }
     }
 
     public override int UpdateTimestamps(
@@ -606,6 +763,12 @@ public class FuseHandler : FuseFileSystemBase
         ref timespec mtime,
         FuseFileInfoRef fiRef)
     {
+        bool canStart = CanStartThread();
+        if (!canStart)
+        {
+            return (int)FuseError.NoData;
+        }
+
         try
         {
             if (!path.StartsWith("/"u8))
@@ -662,10 +825,20 @@ public class FuseHandler : FuseFileSystemBase
             Trace.WriteLine(ex);
             return (int)FuseError.IoError;
         }
+        finally
+        {
+            EndThread();
+        }
     }
 
     public override int Unlink(ReadOnlySpan<byte> path)
     {
+        bool canStart = CanStartThread();
+        if (!canStart)
+        {
+            return (int)FuseError.NoData;
+        }
+
         try
         {
             if (!path.StartsWith("/"u8))
@@ -691,10 +864,20 @@ public class FuseHandler : FuseFileSystemBase
             Trace.WriteLine(ex);
             return (int)FuseError.IoError;
         }
+        finally
+        {
+            EndThread();
+        }
     }
 
     public override int Write(ReadOnlySpan<byte> path, ulong offset, ReadOnlySpan<byte> buffer, ref FuseFileInfo fi)
     {
+        bool canStart = CanStartThread();
+        if (!canStart)
+        {
+            return (int)FuseError.NoData;
+        }
+
         try
         {
             if (!path.StartsWith("/"u8))
@@ -732,8 +915,40 @@ public class FuseHandler : FuseFileSystemBase
             Trace.WriteLine(ex);
             return (int)FuseError.IoError;
         }
+        finally
+        {
+            EndThread();
+        }
     }
 
+
+    private bool CanStartThread()
+    {
+        if (_cancellationToken.IsCancellationRequested)
+        {
+            return false;
+        }
+
+        Interlocked.Increment(ref _numFuseThreadsRunning);
+        return true;
+    }
+
+    private void EndThread()
+    {
+        if (_numFuseThreadsRunning > 0)
+        {
+            Interlocked.Decrement(ref _numFuseThreadsRunning);
+        }
+
+        if (_cancellationToken.IsCancellationRequested && _numFuseThreadsRunning == 0)
+        {
+            Console.WriteLine("Unmounting volume...");
+            // ReSharper disable once MethodHasAsyncOverloadWithCancellation
+            Console.Out.Flush();
+
+            Environment.Exit(0);
+        }
+    }
 
     private FuseError TraverseFs(ReadOnlySpan<byte> path, bool createNonExistentDirs, out FsInode? inode)
     {

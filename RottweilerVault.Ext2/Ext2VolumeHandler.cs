@@ -6,7 +6,6 @@ using RottweilerVault.Ext2.Implementations;
 using RottweilerVault.FsBase;
 using RottweilerVault.FsBase.Utils;
 using RottweilerVault.FsBase.FsStructures;
-using Tmds.Fuse;
 using Tmds.Linux;
 
 namespace RottweilerVault.Ext2;
@@ -90,7 +89,7 @@ public class Ext2VolumeHandler : IEncryptedVolumeHandler
         Console.WriteLine($"Volume \"{_volumeName}\" created successfully!");
     }
 
-    public IFuseFileSystem GetFsImplementation(CancellationToken cancellationToken)
+    public FuseHandler GetFsImplementation(CancellationToken cancellationToken)
     {
         string appDataDir = VolumeManagementUtils.GetAppDataDirectoryPath();
         string volumePath = Path.Combine(appDataDir, _volumeName);
@@ -104,12 +103,15 @@ public class Ext2VolumeHandler : IEncryptedVolumeHandler
         fs.Seek(0, SeekOrigin.Begin);
         SuperStructure superStructure = new(fs, _key1, _key2);
 
-        return new FuseHandler(new Ext2FsHandler(superStructure), new FsDirectory
-        {
-            Name = "/",
-            InodeId = 2,
-            InodeMode = DEFAULT_DIRECTORY_MODE
-        });
+        return new FuseHandler(
+            new Ext2FsHandler(superStructure),
+            new FsDirectory
+            {
+                Name = "/",
+                InodeId = 2,
+                InodeMode = DEFAULT_DIRECTORY_MODE
+            },
+            cancellationToken);
     }
 
 
