@@ -63,6 +63,7 @@ internal static class Program
                     if (sb.Length > 0)
                     {
                         sb.Remove(position - 1, 1);
+                        position--;
                     }
 
                     continue;
